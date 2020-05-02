@@ -224,7 +224,6 @@ pub struct KeyboardLayout {
 
 impl KeyboardLayout {
     pub fn translate(&self, key:&(Key, ModSet)) -> Option<CharKey> {
-        println!("translating {:?}", key);
 
         let ck = self.map.get(&key).map(|&s| s);
         if ck.is_some() { return ck }
@@ -351,7 +350,6 @@ impl From<&str> for CharKeyMod {
                 }
             }
 
-            println!("WE TRANSLATED {}", string);
             let sref : &str = string.as_ref();
             CharKeyMod {
                 key:sref.into(),

@@ -92,7 +92,6 @@ impl<T> Ui<T> {
 
     pub fn input(&mut self, glfw:&mut GlfwSurface, env:&mut T) -> bool {
         for evt in glfw.poll_events() {
-            //println!("{:?}", evt);
             match evt {
                 WindowEvent::Close => { self.running = false },
 
@@ -136,13 +135,11 @@ impl<T> Ui<T> {
     }
 
     fn launch_command(&mut self, env:&mut T, command:String) {
-        println!("we send a command");
         let mut words = command.split_whitespace();
 
         let name = words.next().unwrap();
         let args = words.collect();
 
-        println!("name: {}, args: {:?}", name, args);
         if let Some(command) = self.commands.get(name) {
             let command = command.clone();
             command(self, env, &args);
@@ -150,7 +147,6 @@ impl<T> Ui<T> {
     }
 
     fn perform_char_mod(&mut self, env:&mut T, c:CharKey, mods:ModSet) {
-        println!("performing {:?} {:?}", c, mods);
         match c {
 
             CharKey::Special(0) => {
@@ -176,7 +172,6 @@ impl<T> Ui<T> {
 
             // any character in normal mode
             c if self.mode == Mode::Normal || self.mode == Mode::Visual => {
-                println!("we are parsing a verb or an object");
                 // parse count
                 let count = if self.buffer.len() == 0 { 1 }
                             else { self.buffer.parse().unwrap() };
@@ -209,13 +204,11 @@ impl<T> Ui<T> {
                     }
                 } else { // else, we have a verb, we need to check for transitivity
 
-                    println!("there are no verb saved yet, we parse a verb");
 
                     // check if verb exist
                     let verb = CharKeyMod { key:c, mods };
                     let object = verb.clone();
                     if let Some((is_transitive, action)) = self.verbs.get(&verb) {
-                        println!("{:?} is a verb", c);
 
                         if *is_transitive {
                             self.verb = Some((count, action.clone()));
@@ -265,7 +258,6 @@ impl<T> Ui<T> {
     pub fn bind_key<K:Into<CharKeyMod>, S:Into<KeySequence>>(&mut self, k:K, mode:Mode, phrase:S) {
         let k = k.into();
         let s = phrase.into();
-        println!("key {:?} bound to sequence {:?}", k, s);
         self.bindings.insert((k, mode), s);
     }
 

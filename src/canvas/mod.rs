@@ -1,6 +1,6 @@
 mod shader;
 
-pub use shader::{Semantics, Vertex, ShaderInterface, VertexPosition, TexPosition, VertexColor};
+pub use shader::*;
 
 /// This structure represent a VIPix canvas:
 /// - Its size in pixels (Width, Height).

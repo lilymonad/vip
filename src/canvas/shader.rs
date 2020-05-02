@@ -13,8 +13,6 @@ pub enum Semantics {
     Position,
     #[sem(name="texPos", repr="[f32;2]", wrapper="TexPosition")]
     Tex,
-    #[sem(name="color", repr="[u8;3]", wrapper="VertexColor")]
-    Color,
 }
 
 #[repr(C)]
@@ -23,8 +21,6 @@ pub enum Semantics {
 pub struct Vertex {
     pub pos: VertexPosition,
     pub texPos: TexPosition,
-    #[vertex(normalized="true")]
-    pub rgb: VertexColor,
 }
 
 #[derive(UniformInterface)]

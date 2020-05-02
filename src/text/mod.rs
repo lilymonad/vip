@@ -167,7 +167,6 @@ impl TextRendererBuilder {
                    , [gx, gy]
                    , [bb.width() as u32, bb.height() as u32], &map).ok()?;
 
-                println!("min of '{}' is {:?}", c, bb.min);
                 glyphs.insert((*c, FontID(fi)), GlyphRect {
                     topleft: (gx as f32 / aw as f32, gy as f32 / ah as f32),
                     size: (w as f32 / aw as f32, h as f32 / ah as f32),

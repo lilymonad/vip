@@ -84,16 +84,16 @@ fn main() {
     let tri_vert : [canvas::Vertex; 6];
 
     {
-        use canvas::{Vertex, VertexPosition, TexPosition, VertexColor};
+        use canvas::{Vertex, VertexPosition, TexPosition};
 
         tri_vert = 
     [
-        Vertex { pos:VertexPosition::new([0.0,0.0]),texPos:TexPosition::new([0.0,0.0]), rgb:VertexColor::new([255,255,255]) },
-        Vertex { pos:VertexPosition::new([16.0,0.0]), texPos:TexPosition::new([1.0,0.0]), rgb:VertexColor::new([255,255,255]) },
-        Vertex { pos:VertexPosition::new([0.0,16.0]), texPos:TexPosition::new([0.0,1.0]), rgb:VertexColor::new([255,255,255]) },
-        Vertex { pos:VertexPosition::new([0.0,16.0]), texPos:TexPosition::new([0.0,1.0]), rgb:VertexColor::new([255,255,255]) },
-        Vertex { pos:VertexPosition::new([16.0,16.0]),  texPos:TexPosition::new([1.0,1.0]), rgb:VertexColor::new([255,255,255]) },
-        Vertex { pos:VertexPosition::new([16.0,0.0]), texPos:TexPosition::new([1.0,0.0]), rgb:VertexColor::new([255,255,255]) },
+        Vertex { pos:VertexPosition::new([ 0.0, 0.0]), texPos:TexPosition::new([0.0,0.0]) },
+        Vertex { pos:VertexPosition::new([16.0, 0.0]), texPos:TexPosition::new([1.0,0.0]) },
+        Vertex { pos:VertexPosition::new([ 0.0,16.0]), texPos:TexPosition::new([0.0,1.0]) },
+        Vertex { pos:VertexPosition::new([ 0.0,16.0]), texPos:TexPosition::new([0.0,1.0]) },
+        Vertex { pos:VertexPosition::new([16.0,16.0]), texPos:TexPosition::new([1.0,1.0]) },
+        Vertex { pos:VertexPosition::new([16.0, 0.0]), texPos:TexPosition::new([1.0,0.0]) },
     ];
     }
 
@@ -159,7 +159,7 @@ fn main() {
         .set_blending(Some((Equation::Additive, Factor::SrcAlpha, Factor::SrcAlphaComplement)))
         .set_depth_test(None);
 
-    let inv_size = (1.0 / WIDTH as f32, 1.0 / HEIGHT as f32);
+    let inv_size = (1.0 / WIDTH, 1.0 / HEIGHT);
     let zoom = 1.0;
     let mut text_tess;
 
