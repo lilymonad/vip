@@ -4,6 +4,7 @@ mod canvas;
 mod ui;
 mod selection;
 mod maths;
+mod bitmap2d;
 
 use image::{open, DynamicImage};
 use luminance::{
@@ -24,6 +25,7 @@ use ui::*;
 use canvas::Canvas;
 use maths::*;
 use keyboard::CharKeyMod;
+use bitmap2d::*;
 
 struct UiState {
     palette:HashMap<CharKeyMod, (u8, u8, u8)>,
@@ -42,7 +44,7 @@ enum VisualType {
 }
 
 impl VisualType {
-    fn select_pixels(&self, set:&mut HashSet<(usize, usize)>, (x1, y1):(usize, usize), (x2, y2):(usize, usize)) {
+    fn select_pixels<T:BitMap2D>(&self, set:&mut T, (x1, y1):(usize, usize), (x2, y2):(usize, usize)) {
         match self {
             VisualType::Square => {
                 (x1..x2+1)
@@ -52,7 +54,7 @@ impl VisualType {
                             .into_iter()
                             .map(move |y| (x, y))
                     })
-                    .for_each(|p| { set.insert(p); });
+                    .for_each(|(x, y)| { set.set_bit(x, y); });
             },
             VisualType::Circle => {
                 let (mx, my) = (((x1+x2) / 2) as isize, ((y1+y2) / 2) as isize);
@@ -68,7 +70,7 @@ impl VisualType {
                         let (dx, dy) = (mx - x as isize, my - y as isize);
                         let dd = (dx*dx + dy*dy) as f32;
                         if (dd - w*w).abs() <= 2.0 {
-                            set.insert((x, y));
+                            set.set_bit(x, y);
                         }
                     });
             },
