@@ -83,21 +83,18 @@ fn main() {
     const WIDTH : f32 = 800.0;
     const HEIGHT : f32 = 600.0;
 
-    let tri_vert : [canvas::Vertex; 6];
-
-    {
+    const TRI_VERT : [canvas::Vertex; 6] = {
         use canvas::{Vertex, VertexPosition, TexPosition};
 
-        tri_vert = 
-    [
-        Vertex { pos:VertexPosition::new([ 0.0, 0.0]), texPos:TexPosition::new([0.0,0.0]) },
-        Vertex { pos:VertexPosition::new([16.0, 0.0]), texPos:TexPosition::new([1.0,0.0]) },
-        Vertex { pos:VertexPosition::new([ 0.0,16.0]), texPos:TexPosition::new([0.0,1.0]) },
-        Vertex { pos:VertexPosition::new([ 0.0,16.0]), texPos:TexPosition::new([0.0,1.0]) },
-        Vertex { pos:VertexPosition::new([16.0,16.0]), texPos:TexPosition::new([1.0,1.0]) },
-        Vertex { pos:VertexPosition::new([16.0, 0.0]), texPos:TexPosition::new([1.0,0.0]) },
-    ];
-    }
+        [
+            Vertex { pos:VertexPosition::new([ 0.0, 0.0]), texPos:TexPosition::new([0.0,0.0]) },
+            Vertex { pos:VertexPosition::new([16.0, 0.0]), texPos:TexPosition::new([1.0,0.0]) },
+            Vertex { pos:VertexPosition::new([ 0.0,16.0]), texPos:TexPosition::new([0.0,1.0]) },
+            Vertex { pos:VertexPosition::new([ 0.0,16.0]), texPos:TexPosition::new([0.0,1.0]) },
+            Vertex { pos:VertexPosition::new([16.0,16.0]), texPos:TexPosition::new([1.0,1.0]) },
+            Vertex { pos:VertexPosition::new([16.0, 0.0]), texPos:TexPosition::new([1.0,0.0]) },
+        ]
+    };
 
     let dim = WindowDim::Windowed(WIDTH as u32, HEIGHT as u32);
     let opt = WindowOpt::default();
@@ -105,7 +102,7 @@ fn main() {
         .expect("Couldn't create glfw window");
 
     let tess = TessBuilder::new(&mut glfw)
-        .add_vertices(tri_vert)
+        .add_vertices(TRI_VERT)
         .set_mode(Mode::Triangle)
         .build()
         .unwrap();
@@ -116,7 +113,6 @@ fn main() {
 
     let VS = fs::read_to_string("src/canvas/normal.vert").unwrap();
     let FS = fs::read_to_string("src/canvas/normal.frag").unwrap();
-
     let program : Program<canvas::Semantics, (), canvas::ShaderInterface> =
         Program::from_strings(None, &VS, None, &FS)
         .expect("Couldn't compile OpenGL program")
@@ -124,16 +120,13 @@ fn main() {
 
     let TVS = fs::read_to_string("src/text/text.vert").unwrap();
     let TFS = fs::read_to_string("src/text/text.frag").unwrap();
-
     let text_program : Program<text::Semantics, (), text::ShaderInterface> =
         Program::from_strings(None, &TVS, None, &TFS)
         .expect("Couldn't compile Text shader program")
         .ignore_warnings();
 
-
     let SVS = fs::read_to_string("src/selection.vert").unwrap();
     let SFS = fs::read_to_string("src/selection.frag").unwrap();
-
     let select_program : Program<sel::Semantics, (), sel::ShaderInterface> =
         Program::from_strings(None, &SVS, None, &SFS)
         .expect("Couldn't compile Selection shader program")
@@ -145,7 +138,7 @@ fn main() {
     let mut textb = text::TextRendererBuilder::for_resolution(64);
     let fid = textb.add_font("/usr/share/fonts/TTF/Hack-Regular.ttf").unwrap();
 
-    let sampler = Sampler {
+    let text_sampler = Sampler {
         wrap_r : Wrap::ClampToEdge,
         wrap_s : Wrap::ClampToEdge,
         wrap_t : Wrap::ClampToEdge,
@@ -153,7 +146,7 @@ fn main() {
         mag_filter : MagFilter::Linear,
         depth_comparison : None,
     };
-    let text = textb.build(&mut glfw, sampler)
+    let text = textb.build(&mut glfw, text_sampler)
         .expect("Cannot load fonts");
 
 
@@ -161,8 +154,6 @@ fn main() {
         .set_blending(Some((Equation::Additive, Factor::SrcAlpha, Factor::SrcAlphaComplement)))
         .set_depth_test(None);
 
-    let inv_size = (1.0 / WIDTH, 1.0 / HEIGHT);
-    let zoom = 1.0;
     let mut text_tess;
 
     let sampler = Sampler {
@@ -288,24 +279,22 @@ fn main() {
     palette.insert(CharKeyMod::from("a"), (255, 0, 0));
     palette.insert(CharKeyMod::from("z"), (0, 255, 0));
     palette.insert(CharKeyMod::from("e"), (0, 0, 255));
+
     let mut state = UiState {
         must_resize:false,
-        scale:inv_size,
-        zoom,
+        scale:(1.0/WIDTH, 1.0/HEIGHT),
+        zoom:1.0,
         canvas:pattern,
-        center:(0.0, 0.0),
+        center:(-8.0, -8.0),
         visual_type:VisualType::Square,
         palette,
         window_size:(WIDTH, HEIGHT),
     };
 
-
-
     let img = open("selecteur.png").unwrap();
     let raw : Vec<(u8, u8, u8, u8)> =
         match img {
             DynamicImage::ImageRgba8(img) => {
-                println!("Yay ! we have an rgba image !");
                 img
                     .into_vec()
                     .chunks(4)
@@ -317,17 +306,12 @@ fn main() {
                     })
                     .collect()
             },
-            _ => { unimplemented!("We don't have an RGBA8 image.... bizarre") },
+            _ => { unimplemented!("Error while loading selection image") },
         };
-
     let tex_sel : Texture<Dim2, NormRGBA8UI> = Texture::new(&mut glfw, [256, 256], 0, sampler)
-        .expect("Cannot create texture");
-
+        .expect("Cannot create selection texture");
     tex_sel.upload(GenMipmaps::No, raw.as_ref())
-        .expect("Cannot upload texture");
-
-    println!("HAHA image uploaded!");
-
+        .expect("Cannot upload selection texture");
 
     'main_loop: loop {
         if !ui.input(&mut glfw, &mut state) { break 'main_loop }
