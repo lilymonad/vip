@@ -14,58 +14,25 @@ mod ui;
 mod selection;
 mod maths;
 
-use image::{open, DynamicImage, ImageBuffer};
-use glfw::Modifiers;
-use rusttype::{Font};
+use image::{open, DynamicImage};
 use luminance::{
-    framebuffer::Framebuffer,
     context::GraphicsContext,
-    pipeline::{ShadingGate, Pipeline, PipelineState, BoundTexture},
-    shader::program::{Program, BuiltProgram, UniformInterface, Uniform},
+    pipeline::PipelineState,
+    shader::program::Program,
     render_state::{RenderState},
-    tess::{Tess, Mode, TessBuilder},
+    tess::{Mode, TessBuilder},
     texture::{Sampler, Wrap, MinFilter, MagFilter, Texture, Dim2, GenMipmaps},
-    pixel::{NormUnsigned, NormRGB8UI, NormRGBA8UI},
+    pixel::{NormRGB8UI, NormRGBA8UI},
     blending::{Factor, Equation},
-    linear::M33,
 };
-use luminance_derive::{Semantics, Vertex, UniformInterface};
-use luminance_glfw::{Surface, GlfwSurface, WindowDim, WindowOpt, WindowEvent, Action, Key};
-use std::{fs, str, collections::{HashSet, HashMap}};
+use luminance_glfw::{Surface, GlfwSurface, WindowDim, WindowOpt, WindowEvent};
+use std::{fs, collections::{HashSet, HashMap}};
 
 use selection as sel;
 use ui::*;
 use canvas::Canvas;
 use maths::*;
-use keyboard::{CharKeyMod, ModSet, azerty};
-
-#[derive(Clone, Copy, Debug, Eq, PartialEq, Semantics)]
-pub enum Semantics {
-    #[sem(name="pos", repr="[f32;2]", wrapper="VertexPosition")]
-    Position,
-    #[sem(name="texPos", repr="[f32;2]", wrapper="TexPosition")]
-    Tex,
-    #[sem(name="color", repr="[u8;3]", wrapper="VertexColor")]
-    Color,
-}
-
-#[repr(C)]
-#[derive(Clone, Copy, Debug, PartialEq, Vertex)]
-#[vertex(sem = "Semantics")]
-struct Vertex {
-    pos: VertexPosition,
-    texPos: TexPosition,
-    #[vertex(normalized="true")]
-    rgb: VertexColor,
-}
-
-#[derive(UniformInterface)]
-struct ShaderInterface {
-    #[uniform]
-    tex: Uniform<& 'static BoundTexture<'static, Dim2, NormUnsigned>>,
-    #[uniform]
-    view: Uniform<M33>,
-}
+use keyboard::{CharKeyMod, ModSet};
 
 struct UiState {
     palette:HashMap<CharKeyMod, (u8, u8, u8)>,
@@ -123,7 +90,12 @@ fn main() {
     const WIDTH : f32 = 800.0;
     const HEIGHT : f32 = 600.0;
 
-    let mut TRI_VERT : [Vertex; 6] = 
+    let tri_vert : [canvas::Vertex; 6];
+
+    {
+        use canvas::{Vertex, VertexPosition, TexPosition, VertexColor};
+
+        tri_vert = 
     [
         Vertex { pos:VertexPosition::new([0.0,0.0]),texPos:TexPosition::new([0.0,0.0]), rgb:VertexColor::new([255,255,255]) },
         Vertex { pos:VertexPosition::new([16.0,0.0]), texPos:TexPosition::new([1.0,0.0]), rgb:VertexColor::new([255,255,255]) },
@@ -132,11 +104,19 @@ fn main() {
         Vertex { pos:VertexPosition::new([16.0,16.0]),  texPos:TexPosition::new([1.0,1.0]), rgb:VertexColor::new([255,255,255]) },
         Vertex { pos:VertexPosition::new([16.0,0.0]), texPos:TexPosition::new([1.0,0.0]), rgb:VertexColor::new([255,255,255]) },
     ];
+    }
 
     let dim = WindowDim::Windowed(WIDTH as u32, HEIGHT as u32);
     let opt = WindowOpt::default();
     let mut glfw = GlfwSurface::new(dim, "VIsual Pixels", opt)
         .expect("Couldn't create glfw window");
+
+    let tess = TessBuilder::new(&mut glfw)
+        .add_vertices(tri_vert)
+        .set_mode(Mode::Triangle)
+        .build()
+        .unwrap();
+
     let pipestate = PipelineState::new()
         .set_clear_color([0.3, 0.3, 0.3, 1.0])
         .enable_clear_color(true);
@@ -144,7 +124,7 @@ fn main() {
     let VS = fs::read_to_string("src/normal.vert").unwrap();
     let FS = fs::read_to_string("src/normal.frag").unwrap();
 
-    let program : Program<Semantics, (), ShaderInterface> =
+    let program : Program<canvas::Semantics, (), canvas::ShaderInterface> =
         Program::from_strings(None, &VS, None, &FS)
         .expect("Couldn't compile OpenGL program")
         .ignore_warnings();
@@ -167,7 +147,6 @@ fn main() {
         .ignore_warnings();
 
 
-    let mut resize = false;
     let mut framebuffer = glfw.back_buffer().unwrap();
 
     let mut textb = text::TextRendererBuilder::for_resolution(64);
@@ -189,12 +168,9 @@ fn main() {
         .set_blending(Some((Equation::Additive, Factor::SrcAlpha, Factor::SrcAlphaComplement)))
         .set_depth_test(None);
 
-    let mut inv_size = (1.0 / 300f32, 1.0 / 300f32);
-    let mut c = String::new();
-    let mut zoom = 1.0;
-
-
-    let mut text_tess = None;
+    let inv_size = (1.0 / 300f32, 1.0 / 300f32);
+    let zoom = 1.0;
+    let mut text_tess;
 
     let sampler = Sampler {
         wrap_r : Wrap::ClampToEdge,
@@ -206,7 +182,6 @@ fn main() {
     };
 
     let (width, height) = (16, 16);
-
 
     let tex : Texture<Dim2, NormRGB8UI> = Texture::new(&mut glfw, [width, height], 0, sampler)
         .expect("Cannot create texture");
@@ -386,12 +361,6 @@ fn main() {
             .set_mode(Mode::Triangle)
             .build().ok();
 
-        let tess = TessBuilder::new(&mut glfw)
-            .add_vertices(TRI_VERT)
-            .set_mode(Mode::Triangle)
-            .build()
-            .unwrap();
-
         let set =
             if ui.get_mode() == ui::Mode::Visual {
                 let (a, b) = ui.get_selection();
@@ -414,23 +383,22 @@ fn main() {
                 let font_atlas = pipeline.bind_texture(&text.atlas);
                 let select_atlas = pipeline.bind_texture(&tex_sel);
 
-                let text_view : [[f32; 3]; 3] =
-                    mul_m3(
-                        &scale(state.scale.0, -state.scale.1),
-                        &translate(-(state.window_size.0) / 2.0, -(state.window_size.1) / 2.0)
-                    );
+                let text_view =
+                        scale(state.scale.0, -state.scale.1)
+                        *
+                        translate(-(state.window_size.0) / 2.0, -(state.window_size.1) / 2.0);
 
 
 
-                let canvas_view : [[f32; 3]; 3] =
-                    mul_m3(
-                        &scale(state.scale.0 * (width as f32) * state.zoom, -state.scale.1 * (height as f32) * state.zoom),
-                        &translate(state.center.0, state.center.1),
-                    );
+                let canvas_view =
+                        scale(state.scale.0 * (width as f32) * state.zoom, -state.scale.1 * (height as f32) * state.zoom)
+                        *
+                        translate(state.center.0, state.center.1);
+
                 // render canvas
                 shd_gate.shade(&program, |iface, mut rdr_gate| {
                     iface.query().ask("tex").unwrap().update(&drawing_buffer);
-                    iface.query().ask("view").unwrap().update(canvas_view);
+                    iface.query().ask("view").unwrap().update(*to_raw(&canvas_view));
                     rdr_gate.render(&render_state, |mut tess_gate| {
                         tess_gate.render(&tess)
                     });
@@ -439,7 +407,7 @@ fn main() {
                 // render selector
                 shd_gate.shade(&select_program, |iface, mut rdr_gate| {
                     iface.query().ask("tex").unwrap().update(&select_atlas);
-                    iface.query().ask("view").unwrap().update(canvas_view);
+                    iface.query().ask("view").unwrap().update(*to_raw(&canvas_view));
                     rdr_gate.render(&render_state, |mut tess_gate| {
                         tess_gate.render(&select_tess);
                     });
@@ -450,7 +418,7 @@ fn main() {
                     shd_gate.shade(&text_program, |iface, mut rdr_gate| {
                         let uniform = iface.query();
                         uniform.ask("tex").unwrap().update(&font_atlas);
-                        uniform.ask("view").unwrap().update(text_view);
+                        uniform.ask("view").unwrap().update(*to_raw(&text_view));
 
 
                         rdr_gate.render(&render_state, |mut tess_gate| {

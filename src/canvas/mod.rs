@@ -1,3 +1,7 @@
+mod shader;
+
+pub use shader::{Semantics, Vertex, ShaderInterface, VertexPosition, TexPosition, VertexColor};
+
 
 pub struct Canvas {
     size : (usize, usize),

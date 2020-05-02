@@ -1,30 +1,24 @@
-pub fn mul_m3(m1:&[[f32;3];3], m2:&[[f32;3];3]) -> [[f32;3];3] {
-    let mut ret = [[0.0;3]; 3];
-    for i in 0..3 {
-        for j in 0..3 {
-            for k in 0..3 {
-                ret[i][j] += m1[i][k] * m2[k][j];
-            }
-        }
+use glm::{Mat3, mat3};
+
+/// Create a 2D normalized matrix (so
+pub fn translate(x:f32, y:f32) -> Mat3 {
+    mat3(
+        1.0, 0.0, 0.0,
+        0.0, 1.0, 0.0,
+          x,   y, 1.0
+    )
+}
+
+pub fn scale(sx:f32, sy:f32) -> Mat3 {
+    mat3(
+         sx, 0.0, 0.0,
+        0.0,  sy, 0.0,
+        0.0, 0.0, 1.0
+    )
+}
+
+pub fn to_raw(mat:&Mat3) -> &[[f32; 3]; 3] {
+    unsafe {
+        ((mat as * const Mat3) as * const [[f32; 3]; 3]).as_ref().unwrap()
     }
-
-    ret
 }
-
-pub fn translate(x:f32, y:f32) -> [[f32;3];3] {
-    [
-        [1.0, 0.0,   x],
-        [0.0, 1.0,   y],
-        [0.0, 0.0, 1.0],
-    ]
-}
-
-pub fn scale(sx:f32, sy:f32) -> [[f32;3];3] {
-    [
-        [ sx, 0.0, 0.0],
-        [0.0,  sy, 0.0],
-        [0.0, 0.0, 1.0],
-    ]
-}
-
-
