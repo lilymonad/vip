@@ -1,12 +1,3 @@
-extern crate luminance;
-extern crate luminance_glfw;
-extern crate luminance_derive;
-extern crate serde;
-extern crate serde_json;
-extern crate rusttype;
-extern crate glfw;
-extern crate image;
-
 mod keyboard;
 mod text;
 mod canvas;
@@ -398,7 +389,6 @@ fn main() {
                         *
                         translate(state.center.0, state.center.1)
                     );
-                println!("{:?}", canvas_view);
 
                 // render canvas
                 shd_gate.shade(&program, |iface, mut rdr_gate| {
