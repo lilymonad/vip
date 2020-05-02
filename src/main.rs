@@ -23,7 +23,7 @@ use selection as sel;
 use ui::*;
 use canvas::Canvas;
 use maths::*;
-use keyboard::{CharKeyMod, ModSet};
+use keyboard::CharKeyMod;
 
 struct UiState {
     palette:HashMap<CharKeyMod, (u8, u8, u8)>,
@@ -112,16 +112,16 @@ fn main() {
         .set_clear_color([0.3, 0.3, 0.3, 1.0])
         .enable_clear_color(true);
 
-    let VS = fs::read_to_string("src/normal.vert").unwrap();
-    let FS = fs::read_to_string("src/normal.frag").unwrap();
+    let VS = fs::read_to_string("src/canvas/normal.vert").unwrap();
+    let FS = fs::read_to_string("src/canvas/normal.frag").unwrap();
 
     let program : Program<canvas::Semantics, (), canvas::ShaderInterface> =
         Program::from_strings(None, &VS, None, &FS)
         .expect("Couldn't compile OpenGL program")
         .ignore_warnings();
 
-    let TVS = fs::read_to_string("src/text.vert").unwrap();
-    let TFS = fs::read_to_string("src/text.frag").unwrap();
+    let TVS = fs::read_to_string("src/text/text.vert").unwrap();
+    let TFS = fs::read_to_string("src/text/text.frag").unwrap();
 
     let text_program : Program<text::Semantics, (), text::ShaderInterface> =
         Program::from_strings(None, &TVS, None, &TFS)
@@ -159,7 +159,7 @@ fn main() {
         .set_blending(Some((Equation::Additive, Factor::SrcAlpha, Factor::SrcAlphaComplement)))
         .set_depth_test(None);
 
-    let inv_size = (1.0 / 300f32, 1.0 / 300f32);
+    let inv_size = (1.0 / WIDTH as f32, 1.0 / HEIGHT as f32);
     let zoom = 1.0;
     let mut text_tess;
 
@@ -222,7 +222,7 @@ fn main() {
         }
     });
 
-    ui.add_verb(CharKeyMod { key:"+".into(), mods:ModSet::shift() }, false, |_, UiState { zoom, .. }, _| {
+    ui.add_verb("<S-+>", false, |_, UiState { zoom, .. }, _| {
         *zoom += 0.1;
     });
 
