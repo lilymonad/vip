@@ -5,7 +5,7 @@ in vec3 onColor;
 uniform sampler2D tex;
 uniform mat3 view;
 
-out vec3 fcolor;
+out float luminance;
 out vec2 texcoord;
 
 void main()
@@ -13,6 +13,6 @@ void main()
     vec3 fpos = vec3(pos, 1.0) * view;
     gl_Position = vec4(fpos.x, fpos.y, 0.0, 1.0);
 
-    fcolor = (vec3(1, 1, 1) - onColor);
+    luminance = 0.3 * onColor.r + 0.59 * onColor.g + 0.11 * onColor.b;
     texcoord = vec2(texPos.x, texPos.y);
 }
