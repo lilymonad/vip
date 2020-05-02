@@ -150,9 +150,13 @@ impl<T> Ui<T> {
         match c {
 
             CharKey::Special(0) => {
+                self.cursor = self.saved_cursor;
                 self.set_mode(Mode::Normal);
                 self.buffer.clear();
                 self.verb = None;
+                if let Some((_, action)) = self.verbs.get(&CharKeyMod { key:c, mods }) {
+                    (action.clone())(self, env, None);
+                }
             },
 
             CharKey::Special(24) if self.mode == Mode::Command => {
@@ -190,11 +194,11 @@ impl<T> Ui<T> {
                         let mut positions = HashSet::new();
 
                         // for each asked application
-                        for i in 0..n {
+                        for _ in 0..n {
                             positions.clear();
 
                             // move count times
-                            for j in 0..count {
+                            for _ in 0..count {
                                 object(self, env, &mut positions);
                             }
 
@@ -277,14 +281,12 @@ impl<T> Ui<T> {
     pub fn wrapping_displace(&mut self, dx:isize, dy:isize, w:usize, h:usize) {
         self.cursor.0 = ((self.cursor.0 as isize).wrapping_add(dx) as usize).min(w - 1);
         self.cursor.1 = ((self.cursor.1 as isize).wrapping_add(dy) as usize).min(h - 1);
+        if self.mode != Mode::Visual {
+            self.saved_cursor = self.cursor
+        }
     }
 
     pub fn set_mode(&mut self, mode:Mode) {
-        if self.mode != Mode::Visual && mode == Mode::Visual {
-            self.saved_cursor = self.cursor
-        } else if self.mode == Mode::Visual && mode != Mode::Visual {
-            self.cursor = self.saved_cursor
-        }
         self.mode = mode
     }
 

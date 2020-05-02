@@ -36,6 +36,7 @@ struct UiState {
     canvas:Canvas,
     visual_type:VisualType,
     window_size:(f32, f32),
+    selection:HashSet<(usize, usize)>,
 }
 
 enum VisualType {
@@ -176,11 +177,16 @@ fn main() {
         .expect("Cannot upload texture");
 
 
-    let mut ui : Ui<UiState> = Ui::new(|ui: &mut Ui<UiState>, UiState { canvas, palette, ..}, c| {
-        let (x, y) = ui.cursor();
-
+    let mut ui : Ui<UiState> = Ui::new(|ui: &mut Ui<UiState>, UiState { selection, canvas, palette, ..}, c| {
         if let Some(color) = palette.get(&c) {
-            canvas.set_pixel_color(x, y, *color);
+            if selection.is_empty() {
+                let (x, y) = ui.cursor();
+                canvas.set_pixel_color(x, y, *color);
+            } else {
+                for &(x, y) in selection.iter() {
+                    canvas.set_pixel_color(x, y, *color);
+                }
+            }
         }
     });
 
@@ -227,7 +233,12 @@ fn main() {
         ui.set_mode(ui::Mode::Command);
     });
 
-    ui.add_verb("i", false, |ui, _, _| {
+    ui.add_verb("i", false, |ui, UiState { selection, visual_type, .. }, _| {
+        if ui.get_mode() == ui::Mode::Visual {
+            selection.clear();
+            let (a, b) = ui.get_selection();
+            visual_type.select_pixels(selection, a, b);
+        }
         ui.set_mode(ui::Mode::Insertion);
     });
 
@@ -271,15 +282,17 @@ fn main() {
     ui.bind_key("<Up>", ui::Mode::Insertion, "<Esc>ki");
 
     ui.add_command("imap", |ui, _, args| {
-        println!("IMAP CALLED ON {} {}", args[0], args[1]);
         ui.bind_key(args[0], ui::Mode::Insertion, args[1]);
+    });
+
+    ui.add_verb("<Esc>", false, |_, UiState { selection, .. }, _| {
+        selection.clear();
     });
 
     let mut palette = HashMap::new();
     palette.insert(CharKeyMod::from("a"), (255, 0, 0));
     palette.insert(CharKeyMod::from("z"), (0, 255, 0));
     palette.insert(CharKeyMod::from("e"), (0, 0, 255));
-
     let mut state = UiState {
         must_resize:false,
         scale:(1.0/WIDTH, 1.0/HEIGHT),
@@ -289,6 +302,7 @@ fn main() {
         visual_type:VisualType::Square,
         palette,
         window_size:(WIDTH, HEIGHT),
+        selection:HashSet::new(),
     };
 
     let img = open("selecteur.png").unwrap();
@@ -344,7 +358,11 @@ fn main() {
                 let mut set = HashSet::new();
                 state.visual_type.select_pixels(&mut set, a, b);
                 set
-            } else { [ui.cursor()].iter().cloned().collect() };
+            } else if state.selection.is_empty() {
+                [ui.cursor()].iter().cloned().collect()
+            } else {
+                state.selection.clone()
+            };
 
         let select_tess = TessBuilder::new(&mut glfw)
             .add_vertices(&sel::vertice_from_selection(&set, &state.canvas))
