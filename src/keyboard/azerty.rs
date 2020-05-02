@@ -154,7 +154,7 @@ const AZERTY_CHARCODES : & 'static [(Key, ModSet)] =
 ];
 
 pub fn layout() -> KeyboardLayout {
-    let mut map =
+    let map =
         CHARS_IN_ORDER
         .iter()
         .zip(AZERTY_CHARCODES.iter())
