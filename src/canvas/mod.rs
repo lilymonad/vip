@@ -2,7 +2,9 @@ mod shader;
 
 pub use shader::{Semantics, Vertex, ShaderInterface, VertexPosition, TexPosition, VertexColor};
 
-
+/// This structure represent a VIPix canvas:
+/// - Its size in pixels (Width, Height).
+/// - Its data (a big array of Width x Height pixels).
 pub struct Canvas {
     size : (usize, usize),
     data : Vec<(u8, u8, u8)>,

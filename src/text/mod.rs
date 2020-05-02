@@ -1,77 +1,14 @@
+mod shader;
+
 use std::{cell::Cell, path::Path, fs, collections::{HashMap, BTreeMap}};
 use rusttype::{Font, Point, Scale};
 use luminance::{
-    texture::{Texture, GenMipmaps, Dim2, Sampler},
-    pixel::{NormUnsigned, NormRGB8UI, NormR8UI},
+    texture::{Texture, GenMipmaps, Sampler, Dim2},
+    pixel::NormR8UI,
     context::GraphicsContext,
-    pipeline::BoundTexture,
-    shader::program::Uniform,
-    linear::M33,
 };
 
-use luminance_derive::{Semantics, Vertex, UniformInterface};
-#[derive(Clone, Copy, Debug, Eq, PartialEq, Semantics)]
-pub enum Semantics {
-    #[sem(name="pos", repr="[f32;2]", wrapper="VP")]
-    Position,
-    #[sem(name="texPos", repr="[f32;2]", wrapper="TP")]
-    TexPos,
-//        #[sem(name="color", repr="[u8;3]", wrapper="VC")]
-//        Color,
-}
-
-#[repr(C)]
-#[derive(Clone, Copy, Debug, PartialEq, Vertex)]
-#[vertex(sem = "Semantics")]
-pub struct Vertex {
-    pub pos: VP,
-    pub texPos: TP,
-//        #[vertex(normalized="true")]
-//        pub rgb: VC,
-}
-
-#[derive(UniformInterface)]
-pub struct ShaderInterface {
-    #[uniform]
-    tex: Uniform<& 'static BoundTexture<'static, Dim2, NormUnsigned>>,
-    #[uniform]
-    view: Uniform<M33>,
-}
-
-pub fn render_text<'a, S>(font: &Font<'a>, text:S, raster: &Texture<Dim2, NormRGB8UI>)
-    -> Option<()>
-    where
-        S : AsRef<str>,
-{
-    let text : &str = text.as_ref();
-    let mut pos = Point { x:0f32, y:0f32 };
-
-    for c in text.chars() {
-        let glyph = font
-            .glyph(c)
-            .scaled(Scale::uniform(128f32))
-            .positioned(pos);
-
-        let bounds = glyph.pixel_bounding_box()?;
-        let (w, h) = (bounds.width() as u32, bounds.height() as u32);
-        let num_pixels = (w * h) as usize;
-        let mut map : Vec<(u8,u8,u8)> = Vec::with_capacity(num_pixels);
-        map.resize(num_pixels, (0,0,0));
-
-        glyph.draw(|x, y, v| {
-            let v = (v * 255f32) as u8;
-            map[(y*w + x) as usize] = (v,v,v);
-        });
-
-        raster.upload_part(GenMipmaps::No
-                           , [pos.x as u32, pos.y as u32]
-                           , [bounds.width() as u32, bounds.height() as u32], &map).ok()?;
-
-        pos.x += bounds.width() as f32;
-    }
-
-    Some(())
-}
+pub use shader::*;
 
 pub struct GlyphRect {
     pub topleft: (f32, f32),

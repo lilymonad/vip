@@ -384,21 +384,26 @@ fn main() {
                 let select_atlas = pipeline.bind_texture(&tex_sel);
 
                 let text_view =
+                    to_raw(
                         scale(state.scale.0, -state.scale.1)
                         *
-                        translate(-(state.window_size.0) / 2.0, -(state.window_size.1) / 2.0);
+                        translate(-(state.window_size.0) / 2.0, -(state.window_size.1) / 2.0)
+                    );
 
 
 
                 let canvas_view =
+                    to_raw(
                         scale(state.scale.0 * (width as f32) * state.zoom, -state.scale.1 * (height as f32) * state.zoom)
                         *
-                        translate(state.center.0, state.center.1);
+                        translate(state.center.0, state.center.1)
+                    );
+                println!("{:?}", canvas_view);
 
                 // render canvas
                 shd_gate.shade(&program, |iface, mut rdr_gate| {
                     iface.query().ask("tex").unwrap().update(&drawing_buffer);
-                    iface.query().ask("view").unwrap().update(*to_raw(&canvas_view));
+                    iface.query().ask("view").unwrap().update(canvas_view);
                     rdr_gate.render(&render_state, |mut tess_gate| {
                         tess_gate.render(&tess)
                     });
@@ -407,7 +412,7 @@ fn main() {
                 // render selector
                 shd_gate.shade(&select_program, |iface, mut rdr_gate| {
                     iface.query().ask("tex").unwrap().update(&select_atlas);
-                    iface.query().ask("view").unwrap().update(*to_raw(&canvas_view));
+                    iface.query().ask("view").unwrap().update(canvas_view);
                     rdr_gate.render(&render_state, |mut tess_gate| {
                         tess_gate.render(&select_tess);
                     });
@@ -418,7 +423,7 @@ fn main() {
                     shd_gate.shade(&text_program, |iface, mut rdr_gate| {
                         let uniform = iface.query();
                         uniform.ask("tex").unwrap().update(&font_atlas);
-                        uniform.ask("view").unwrap().update(*to_raw(&text_view));
+                        uniform.ask("view").unwrap().update(text_view);
 
 
                         rdr_gate.render(&render_state, |mut tess_gate| {
