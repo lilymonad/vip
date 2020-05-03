@@ -354,13 +354,10 @@ fn main() {
         }
 
 
-        tex.upload(GenMipmaps::No, state.canvas.as_ref())
-            .expect("Cannot upload texture");
+        tex.upload(GenMipmaps::No, state.canvas.as_ref()).expect("Cannot upload texture");
 
         let verts = text.render_text(
-            format!("{:?}:{}",
-            ui.get_mode(),
-            ui.get_buffer()),
+            format!("{:?}:{}", ui.get_mode(), ui.get_buffer()),
             (0.0, state.window_size.1 - 10.0),
             fid);
 
@@ -369,17 +366,16 @@ fn main() {
             .set_mode(Mode::Triangle)
             .build().ok();
 
-        let set =
-            if ui.get_mode() == ui::Mode::Visual {
-                let (a, b) = ui.get_selection();
-                let mut set = HashSet::new();
-                state.visual_type.select_pixels(&mut set, a, b);
-                set
-            } else if state.selection.is_empty() {
-                [ui.cursor()].iter().cloned().collect()
-            } else {
-                state.selection.clone()
-            };
+        let set = if ui.get_mode() == ui::Mode::Visual {
+            let (a, b) = ui.get_selection();
+            let mut set = HashSet::new();
+            state.visual_type.select_pixels(&mut set, a, b);
+            set
+        } else if state.selection.is_empty() {
+            [ui.cursor()].iter().cloned().collect()
+        } else {
+            state.selection.clone()
+        };
 
         let select_tess = TessBuilder::new(&mut glfw)
             .add_vertices(&sel::vertice_from_selection(&set, &state.canvas))
@@ -388,61 +384,55 @@ fn main() {
             .unwrap();
 
         // draw
-        glfw.pipeline_builder().pipeline(&framebuffer, &pipestate,
-            |pipeline, mut shd_gate| {
+        glfw.pipeline_builder().pipeline(&framebuffer, &pipestate, |pipeline, mut shd_gate| {
+            let drawing_buffer = pipeline.bind_texture(&tex);
+            let font_atlas = pipeline.bind_texture(&text.atlas);
+            let select_atlas = pipeline.bind_texture(&tex_sel);
 
-                let drawing_buffer = pipeline.bind_texture(&tex);
-                let font_atlas = pipeline.bind_texture(&text.atlas);
-                let select_atlas = pipeline.bind_texture(&tex_sel);
+            let text_view = {
+                let center_x = (state.window_size.0) / 2.0;
+                let center_y = (state.window_size.1) / 2.0;
 
-                let text_view =
-                    to_raw(
-                        scale(state.scale.0, -state.scale.1)
-                        *
-                        translate(-(state.window_size.0) / 2.0, -(state.window_size.1) / 2.0)
-                    );
+                to_raw(scale(state.scale.0, -state.scale.1) * translate(-center_x, -center_y))
+            };
+
+            let canvas_view = {
+                let scale_x = state.scale.0 * (width as f32) * state.zoom;
+                let scale_y = -state.scale.1 * (height as f32) * state.zoom;
+
+                to_raw(scale(scale_x, scale_y) * translate(state.center.0, state.center.1))
+            };
+
+            // render canvas
+            shd_gate.shade(&program, |iface, mut rdr_gate| {
+                iface.query().ask("tex").unwrap().update(&drawing_buffer);
+                iface.query().ask("view").unwrap().update(canvas_view);
+
+                rdr_gate.render(&render_state, |mut tess_gate| tess_gate.render(&tess) );
+            });
+
+            // render selector
+            shd_gate.shade(&select_program, |iface, mut rdr_gate| {
+                iface.query().ask("tex").unwrap().update(&select_atlas);
+                iface.query().ask("view").unwrap().update(canvas_view);
+
+                rdr_gate.render(&render_state, |mut tess_gate| tess_gate.render(&select_tess) );
+            });
+
+            // render ui text
+            text_tess.map(|text_tess| {
+                shd_gate.shade(&text_program, |iface, mut rdr_gate| {
+                    let uniform = iface.query();
+                    uniform.ask("tex").unwrap().update(&font_atlas);
+                    uniform.ask("view").unwrap().update(text_view);
 
 
-
-                let canvas_view =
-                    to_raw(
-                        scale(state.scale.0 * (width as f32) * state.zoom, -state.scale.1 * (height as f32) * state.zoom)
-                        *
-                        translate(state.center.0, state.center.1)
-                    );
-
-                // render canvas
-                shd_gate.shade(&program, |iface, mut rdr_gate| {
-                    iface.query().ask("tex").unwrap().update(&drawing_buffer);
-                    iface.query().ask("view").unwrap().update(canvas_view);
                     rdr_gate.render(&render_state, |mut tess_gate| {
-                        tess_gate.render(&tess)
-                    });
-                });
-
-                // render selector
-                shd_gate.shade(&select_program, |iface, mut rdr_gate| {
-                    iface.query().ask("tex").unwrap().update(&select_atlas);
-                    iface.query().ask("view").unwrap().update(canvas_view);
-                    rdr_gate.render(&render_state, |mut tess_gate| {
-                        tess_gate.render(&select_tess);
-                    });
-                });
-
-                // render ui text
-                text_tess.map(|text_tess| {
-                    shd_gate.shade(&text_program, |iface, mut rdr_gate| {
-                        let uniform = iface.query();
-                        uniform.ask("tex").unwrap().update(&font_atlas);
-                        uniform.ask("view").unwrap().update(text_view);
-
-
-                        rdr_gate.render(&render_state, |mut tess_gate| {
-                            tess_gate.render(&text_tess);
-                        });
+                        tess_gate.render(&text_tess);
                     });
                 });
             });
+        });
 
         // display
         glfw.swap_buffers();
