@@ -79,6 +79,22 @@ impl VisualType {
     }
 }
 
+/// Create the main UI object.
+fn create_ui() -> Ui<UiState> {
+    Ui::new(|ui: &mut Ui<UiState>, UiState { selection, canvas, palette, ..}, c| {
+        if let Some(color) = palette.get(&c) {
+            if selection.is_empty() {
+                let (x, y) = ui.cursor();
+                canvas.set_pixel_color(x, y, *color);
+            } else {
+                for &(x, y) in selection.iter() {
+                    canvas.set_pixel_color(x, y, *color);
+                }
+            }
+        }
+    })
+}
+
 fn main() {
 
     const WIDTH : f32 = 800.0;
@@ -177,18 +193,7 @@ fn main() {
         .expect("Cannot upload texture");
 
 
-    let mut ui : Ui<UiState> = Ui::new(|ui: &mut Ui<UiState>, UiState { selection, canvas, palette, ..}, c| {
-        if let Some(color) = palette.get(&c) {
-            if selection.is_empty() {
-                let (x, y) = ui.cursor();
-                canvas.set_pixel_color(x, y, *color);
-            } else {
-                for &(x, y) in selection.iter() {
-                    canvas.set_pixel_color(x, y, *color);
-                }
-            }
-        }
-    });
+    let mut ui = create_ui();
 
     ui.set_window_event_listener(Some(|UiState { must_resize, scale:(x,y), window_size, ..} : &mut UiState, e| {
         match e {
@@ -373,7 +378,7 @@ fn main() {
         // draw
         glfw.pipeline_builder().pipeline(&framebuffer, &pipestate,
             |pipeline, mut shd_gate| {
-                
+
                 let drawing_buffer = pipeline.bind_texture(&tex);
                 let font_atlas = pipeline.bind_texture(&text.atlas);
                 let select_atlas = pipeline.bind_texture(&tex_sel);
