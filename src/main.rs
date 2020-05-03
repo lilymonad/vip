@@ -1,10 +1,10 @@
-mod keyboard;
-mod text;
-mod canvas;
-mod ui;
-mod selection;
-mod maths;
 mod bitmap2d;
+mod canvas;
+mod keyboard;
+mod maths;
+mod selection;
+mod text;
+mod ui;
 
 use std::collections::{HashSet, HashMap};
 use std::fs;
