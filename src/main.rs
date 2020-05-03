@@ -81,7 +81,7 @@ impl VisualType {
 
 /// Create the main UI object.
 fn create_ui() -> Ui<UiState> {
-    Ui::new(|ui: &mut Ui<UiState>, UiState { selection, canvas, palette, ..}, c| {
+    let mut ui = Ui::new(|ui: &mut Ui<UiState>, UiState { selection, canvas, palette, ..}, c| {
         if let Some(color) = palette.get(&c) {
             if selection.is_empty() {
                 let (x, y) = ui.cursor();
@@ -92,7 +92,124 @@ fn create_ui() -> Ui<UiState> {
                 }
             }
         }
-    })
+    });
+
+    let event_listener = |UiState { must_resize, scale:(x,y), window_size, ..} : &mut UiState, e| {
+        match e {
+            WindowEvent::FramebufferSize(bx, by) => {
+                *x = 1.0 / (bx as f32);
+                *y = 1.0 / (by as f32);
+                *must_resize = true;
+                *window_size = (bx as f32, by as f32);
+            },
+            _ => {},
+        }
+    };
+
+    ui.set_window_event_listener(Some(event_listener));
+
+    // For each of the H, J, K and L keys, we associate a movement described by a pair of integers.
+    // For each of these pairs, we add an object to the UI event handling system.
+    "hjkl."
+        .chars()
+        .zip([(-1,0),(0,1),(0,-1),(1,0),(0,0)].iter())
+        // h: left, j: down, k: up, l: right.
+        .for_each(|(l, (x,y))| {
+            ui.add_object(l.to_string().as_ref(), move |ui, UiState { canvas,.. }, positions| {
+                positions.insert(ui.cursor());
+                let (w, h) = canvas.size();
+                ui.wrapping_displace(*x, *y, w, h);
+                positions.insert(ui.cursor());
+            });
+        });
+
+    // TODO: What does it do?
+    ui.add_verb("s", true, |_, UiState { canvas,.. }, positions| {
+        let positions = positions.unwrap();
+        for &(x, y) in positions {
+            canvas.set_pixel_color(x, y, (255, 255, 255));
+        }
+    });
+
+    // Zoom in the canvas.
+    ui.add_verb("<S-+>", false, |_, UiState { zoom, .. }, _| {
+        *zoom += 0.1;
+    });
+
+    // Zoom out the canvas
+    ui.add_verb("-", false, |_, UiState { zoom, .. }, _| {
+        *zoom -= 0.1;
+    });
+
+    // Enter command mode.
+    ui.add_verb(":", false, |ui, _, _| {
+        ui.set_mode(ui::Mode::Command);
+    });
+
+    // Enter insert mode. If the current mode was visual, select the pixels that were highlighted.
+    ui.add_verb("i", false, |ui, UiState { selection, visual_type, .. }, _| {
+        if ui.get_mode() == ui::Mode::Visual {
+            selection.clear();
+            let (a, b) = ui.get_selection();
+            visual_type.select_pixels(selection, a, b);
+        }
+        ui.set_mode(ui::Mode::Insertion);
+    });
+
+    // Enter square visual mode.
+    ui.add_verb("v", false, |ui, UiState { visual_type, .. }, _| {
+        *visual_type = VisualType::Square;
+        ui.set_mode(ui::Mode::Visual);
+    });
+
+    // Enter circle visual mode.
+    ui.add_verb("V", false, |ui, UiState { visual_type, .. }, _| {
+        *visual_type = VisualType::Circle;
+        ui.set_mode(ui::Mode::Visual);
+    });
+
+    // TODO: What does it do?
+    ui.add_verb("H", false, |_, UiState { center,.. }:&mut UiState, _| {
+        center.0 -= 1.0;
+    });
+    ui.add_verb("J", false, |_, UiState { center,.. }:&mut UiState, _| {
+        center.1 += 1.0;
+    });
+    ui.add_verb("K", false, |_, UiState { center,.. }:&mut UiState, _| {
+        center.1 -= 1.0;
+    });
+    ui.add_verb("L", false, |_, UiState { center,.. }:&mut UiState, _| {
+        center.0 += 1.0;
+    });
+
+    // Add the quit commands
+    ui.add_command("q", |ui, _, _| {
+        ui.close()
+    });
+
+    ui.add_command("quit", |ui, _, _| {
+        ui.close()
+    });
+
+    // Empty action.
+    ui.add_verb("_", true, |_,_,_| {});
+
+    // Add default key bindings for arrows in insert mode.
+    ui.bind_key("<Left>", ui::Mode::Insertion, "<Esc>hi");
+    ui.bind_key("<Right>", ui::Mode::Insertion, "<Esc>li");
+    ui.bind_key("<Down>", ui::Mode::Insertion, "<Esc>ji");
+    ui.bind_key("<Up>", ui::Mode::Insertion, "<Esc>ki");
+
+    // Add the imap command for key mapping in insert mode.
+    ui.add_command("imap", |ui, _, args| {
+        ui.bind_key(args[0], ui::Mode::Insertion, args[1]);
+    });
+
+    ui.add_verb("<Esc>", false, |_, UiState { selection, .. }, _| {
+        selection.clear();
+    });
+
+    ui
 }
 
 fn main() {
@@ -194,105 +311,6 @@ fn main() {
 
 
     let mut ui = create_ui();
-
-    ui.set_window_event_listener(Some(|UiState { must_resize, scale:(x,y), window_size, ..} : &mut UiState, e| {
-        match e {
-            WindowEvent::FramebufferSize(bx, by) => {
-                *x = 1.0 / (bx as f32);
-                *y = 1.0 / (by as f32);
-                *must_resize = true;
-                *window_size = (bx as f32, by as f32);
-            },
-            _ => {},
-        }
-    }));
-
-    "hjkl."
-        .chars()
-        .zip([(-1,0),(0,1),(0,-1),(1,0),(0,0)].iter())
-        .for_each(|(l, (x,y))| {
-            ui.add_object(l.to_string().as_ref(), move |ui, UiState { canvas,.. }, positions| {
-                positions.insert(ui.cursor());
-                let (w, h) = canvas.size();
-                ui.wrapping_displace(*x, *y, w, h);
-                positions.insert(ui.cursor());
-            });
-        });
-
-    ui.add_verb("s", true, |_, UiState { canvas,.. }, positions| {
-        let positions = positions.unwrap();
-        for &(x, y) in positions {
-            canvas.set_pixel_color(x, y, (255, 255, 255));
-        }
-    });
-
-    ui.add_verb("<S-+>", false, |_, UiState { zoom, .. }, _| {
-        *zoom += 0.1;
-    });
-
-    ui.add_verb("-", false, |_, UiState { zoom, .. }, _| {
-        *zoom -= 0.1;
-    });
-
-    ui.add_verb(":", false, |ui, _, _| {
-        ui.set_mode(ui::Mode::Command);
-    });
-
-    ui.add_verb("i", false, |ui, UiState { selection, visual_type, .. }, _| {
-        if ui.get_mode() == ui::Mode::Visual {
-            selection.clear();
-            let (a, b) = ui.get_selection();
-            visual_type.select_pixels(selection, a, b);
-        }
-        ui.set_mode(ui::Mode::Insertion);
-    });
-
-    ui.add_verb("v", false, |ui, UiState { visual_type, .. }, _| {
-        *visual_type = VisualType::Square;
-        ui.set_mode(ui::Mode::Visual);
-    });
-
-    ui.add_verb("V", false, |ui, UiState { visual_type, .. }, _| {
-        *visual_type = VisualType::Circle;
-        ui.set_mode(ui::Mode::Visual);
-    });
-
-    ui.add_verb("H", false, |_, UiState { center,.. }:&mut UiState, _| {
-        center.0 -= 1.0;
-    });
-    ui.add_verb("J", false, |_, UiState { center,.. }:&mut UiState, _| {
-        center.1 += 1.0;
-    });
-    ui.add_verb("K", false, |_, UiState { center,.. }:&mut UiState, _| {
-        center.1 -= 1.0;
-    });
-    ui.add_verb("L", false, |_, UiState { center,.. }:&mut UiState, _| {
-        center.0 += 1.0;
-    });
-
-    ui.add_command("q", |ui, _, _| {
-        ui.close()
-    });
-
-    ui.add_command("quit", |ui, _, _| {
-        ui.close()
-    });
-
-    // empty action
-    ui.add_verb("_", true, |_,_,_| {});
-
-    ui.bind_key("<Left>", ui::Mode::Insertion, "<Esc>hi");
-    ui.bind_key("<Right>", ui::Mode::Insertion, "<Esc>li");
-    ui.bind_key("<Down>", ui::Mode::Insertion, "<Esc>ji");
-    ui.bind_key("<Up>", ui::Mode::Insertion, "<Esc>ki");
-
-    ui.add_command("imap", |ui, _, args| {
-        ui.bind_key(args[0], ui::Mode::Insertion, args[1]);
-    });
-
-    ui.add_verb("<Esc>", false, |_, UiState { selection, .. }, _| {
-        selection.clear();
-    });
 
     let mut palette = HashMap::new();
     palette.insert(CharKeyMod::from("a"), (255, 0, 0));
