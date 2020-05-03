@@ -280,11 +280,14 @@ impl From<&str> for CharKey {
                 "<Less>" => 26,
                 "<More>" => 27,
                 "<Tab>" => 28,
+                "<Minus>" => 29,
                 _ => 1000,
             };
 
             if code == 25 {
                 CharKey::Char(' ')
+            } else if code == 29 {
+                CharKey::Char('-')
             } else if code == 26 {
                 CharKey::Char('<')
             } else if code == 27 {

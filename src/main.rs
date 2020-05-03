@@ -37,6 +37,131 @@ struct UiState {
     visual_type:VisualType,
     window_size:(f32, f32),
     selection:HashSet<(usize, usize)>,
+    chunk_size:(usize, usize),
+    exploded:bool,
+}
+
+impl UiState {
+    fn render_canvas(&self) -> Vec<canvas::Vertex> {
+        use canvas::*;
+        let (icw, ich) = self.canvas.size();
+        let (chunkw, chunkh) = self.chunk_size;
+        let (nbcw, nbch) = (icw / chunkw, ich / chunkh);
+        let (cw, ch) = (icw as f32, ich as f32);
+        if self.exploded {
+            let mut ret = Vec::new();
+            for i in 0..nbcw {
+                for j in 0..nbch {
+                    let (gx, gy) = (i as f32 * 1.0, j as f32 * 1.0);
+                    let (bx, by) = ((i * chunkw) as f32, (j * chunkh) as f32);
+                    let (ex, ey) = ((bx + chunkw as f32).min(cw), (by + chunkh as f32).min(ch));
+
+                    let (tbx, tby) = (bx / cw, by / ch);
+                    let (tex, tey) = (ex / cw, ey / ch);
+
+                    ret.append(&mut vec![
+                        Vertex { pos:VertexPosition::new([bx + gx,by + gy]), texPos:TexPosition::new([tbx,tby]) },
+                        Vertex { pos:VertexPosition::new([ex + gx,by + gy]), texPos:TexPosition::new([tex,tby]) },
+                        Vertex { pos:VertexPosition::new([ex + gx,ey + gy]), texPos:TexPosition::new([tex,tey]) },
+                        Vertex { pos:VertexPosition::new([ex + gx,ey + gy]), texPos:TexPosition::new([tex,tey]) },
+                        Vertex { pos:VertexPosition::new([bx + gx,ey + gy]), texPos:TexPosition::new([tbx,tey]) },
+                        Vertex { pos:VertexPosition::new([bx + gx,by + gy]), texPos:TexPosition::new([tbx,tby]) },
+                    ]);
+                }
+            }
+
+            ret
+        } else {
+            vec![
+                Vertex { pos:VertexPosition::new([0.0,0.0]), texPos:TexPosition::new([0.0,0.0]) },
+                Vertex { pos:VertexPosition::new([cw,0.0]), texPos:TexPosition::new([1.0,0.0]) },
+                Vertex { pos:VertexPosition::new([cw,ch]), texPos:TexPosition::new([1.0,1.0]) },
+                Vertex { pos:VertexPosition::new([cw,ch]), texPos:TexPosition::new([1.0,1.0]) },
+                Vertex { pos:VertexPosition::new([0.0,ch]), texPos:TexPosition::new([0.0,1.0]) },
+                Vertex { pos:VertexPosition::new([0.0,0.0]), texPos:TexPosition::new([0.0,0.0]) },
+            ]
+        }
+    }
+
+    fn render_selection(&self, selection:&HashSet<(usize, usize)>) -> Vec<sel::Vertex> {
+        use sel::*;
+        let mut ret = Vec::new();
+        for (mut x, mut y) in selection.iter().copied() {
+            let (ix, iy) = (x as isize, y as isize);
+
+            let (tx, ty) = 
+            [   ( 0, -1, (0, 2)),
+                ( 1, -1, (0, 0)),
+                ( 1,  0, (2, 0)),
+                ( 1,  1, (0, 0)),
+                ( 0,  1, (0, 1)),
+                (-1,  1, (0, 0)),
+                (-1,  0, (1, 0)),
+                (-1, -1, (0, 0)) ]
+                    .iter()
+                    .map(|(dx, dy, weight)| {
+                        let pt = (ix.wrapping_add(*dx) as usize, iy.wrapping_add(*dy) as usize);
+                        if !selection.contains(&pt) {
+                            *weight
+                        } else {
+                            (0, 0)
+                        }
+                    })
+                    .fold((0, 0), |(x1,y1), (x2,y2)| (x1+x2, y1+y2));
+
+            let cs = 64.0;
+            let ats = 256.0;
+
+            let ts = cs / ats;
+            let (tx, ty) = (cs*(tx as f32 )/ ats, cs*(ty as f32) / ats);
+
+            let (r, g, b) = self.canvas.get_pixel_color(x, y);
+            let scol = [r, g, b];
+
+
+            if self.exploded {
+                x += x / self.chunk_size.0;
+                y += y / self.chunk_size.1;
+            }
+
+            let (px, py) = (x as f32, y as f32);
+
+            ret.extend_from_slice(&[
+                Vertex {
+                    pos: SelPos::new([px, py]),
+                    texPos: SelTexPos::new([tx, ty]),
+                    onColor: SelOnColor::new(scol.clone()),
+                },
+                Vertex {
+                    pos: SelPos::new([(px + 1.0), py]),
+                    texPos: SelTexPos::new([tx + ts, ty]),
+                    onColor: SelOnColor::new(scol.clone()),
+                },
+                Vertex {
+                    pos: SelPos::new([(px + 1.0), (py + 1.0)]),
+                    texPos: SelTexPos::new([tx + ts, ty + ts]),
+                    onColor: SelOnColor::new(scol.clone()),
+                },
+                Vertex {
+                    pos: SelPos::new([(px + 1.0), (py + 1.0)]),
+                    texPos: SelTexPos::new([tx + ts, ty + ts]),
+                    onColor: SelOnColor::new(scol.clone()),
+                },
+                Vertex {
+                    pos: SelPos::new([px, (py + 1.0)]),
+                    texPos: SelTexPos::new([tx, ty + ts]),
+                    onColor: SelOnColor::new(scol.clone()),
+                },
+                Vertex {
+                    pos: SelPos::new([px, py]),
+                    texPos: SelTexPos::new([tx, ty]),
+                    onColor: SelOnColor::new(scol.clone()),
+                },
+            ]);
+        }
+
+        ret
+    }
 }
 
 enum VisualType {
@@ -84,30 +209,12 @@ fn main() {
     const WIDTH : f32 = 800.0;
     const HEIGHT : f32 = 600.0;
 
-    const TRI_VERT : [canvas::Vertex; 6] = {
-        use canvas::{Vertex, VertexPosition, TexPosition};
-
-        [
-            Vertex { pos:VertexPosition::new([ 0.0, 0.0]), texPos:TexPosition::new([0.0,0.0]) },
-            Vertex { pos:VertexPosition::new([16.0, 0.0]), texPos:TexPosition::new([1.0,0.0]) },
-            Vertex { pos:VertexPosition::new([ 0.0,16.0]), texPos:TexPosition::new([0.0,1.0]) },
-            Vertex { pos:VertexPosition::new([ 0.0,16.0]), texPos:TexPosition::new([0.0,1.0]) },
-            Vertex { pos:VertexPosition::new([16.0,16.0]), texPos:TexPosition::new([1.0,1.0]) },
-            Vertex { pos:VertexPosition::new([16.0, 0.0]), texPos:TexPosition::new([1.0,0.0]) },
-        ]
-    };
-
     let dim = WindowDim::Windowed(WIDTH as u32, HEIGHT as u32);
     let opt = WindowOpt::default();
     let mut glfw = GlfwSurface::new(dim, "VIsual Pixels", opt)
         .expect("Couldn't create glfw window");
 
-    let tess = TessBuilder::new(&mut glfw)
-        .add_vertices(TRI_VERT)
-        .set_mode(Mode::Triangle)
-        .build()
-        .unwrap();
-
+    
     let pipestate = PipelineState::new()
         .set_clear_color([0.3, 0.3, 0.3, 1.0])
         .enable_clear_color(true);
@@ -166,7 +273,7 @@ fn main() {
         depth_comparison : None,
     };
 
-    let (width, height) = (16, 16);
+    let (width, height) = (64, 64);
 
     let tex : Texture<Dim2, NormRGB8UI> = Texture::new(&mut glfw, [width, height], 0, sampler)
         .expect("Cannot create texture");
@@ -222,11 +329,19 @@ fn main() {
     });
 
     ui.add_verb("<S-+>", false, |_, UiState { zoom, .. }, _| {
-        *zoom += 0.1;
+        if *zoom >= 0.1 {
+            *zoom += 0.1;
+        } else {
+            *zoom += 0.01;
+        }
     });
 
     ui.add_verb("-", false, |_, UiState { zoom, .. }, _| {
-        *zoom -= 0.1;
+        if *zoom <= 0.1 {
+            *zoom -= 0.01;
+        } else {
+            *zoom -= 0.1;
+        }
     });
 
     ui.add_verb(":", false, |ui, _, _| {
@@ -252,6 +367,22 @@ fn main() {
         ui.set_mode(ui::Mode::Visual);
     });
 
+    ui.add_verb("e", false, |_, UiState { exploded, .. }, _| {
+        *exploded = !(*exploded);
+    });
+    ui.add_verb("<C-S-+>", false, |_, UiState { chunk_size, .. }, _| {
+        chunk_size.0 += 1;
+        chunk_size.1 += 1;
+    });
+    ui.add_verb("<C-Minus>", false, |_, UiState { chunk_size, .. }, _| {
+        chunk_size.0 -= 1;
+        chunk_size.1 -= 1;
+    });
+
+    ui.add_verb("e", false, |_, UiState { exploded, .. }, _| {
+        *exploded = !(*exploded);
+    });
+    
     ui.add_verb("H", false, |_, UiState { center,.. }:&mut UiState, _| {
         center.0 -= 1.0;
     });
@@ -271,6 +402,21 @@ fn main() {
 
     ui.add_command("quit", |ui, _, _| {
         ui.close()
+    });
+
+    ui.add_command("color", |_, UiState { palette, .. }, args| {
+        let key = args[0].into();
+        let r = args[1].parse::<u8>().unwrap();
+        let g = args[2].parse::<u8>().unwrap();
+        let b = args[3].parse::<u8>().unwrap();
+
+        palette.insert(key, (r, g, b));
+    });
+
+    ui.add_command("zoom", |_, UiState { zoom, .. }, args| {
+        if let Ok(z) = args[0].parse::<f32>() {
+            *zoom = z;
+        }
     });
 
     // empty action
@@ -303,6 +449,8 @@ fn main() {
         palette,
         window_size:(WIDTH, HEIGHT),
         selection:HashSet::new(),
+        chunk_size:(4, 4),
+        exploded:false,
     };
 
     let img = open("selecteur.png").unwrap();
@@ -340,13 +488,23 @@ fn main() {
         tex.upload(GenMipmaps::No, state.canvas.as_ref())
             .expect("Cannot upload texture");
 
-        let verts = text.render_text(
+        let mut verts = text.render_text(
             format!("{:?}:{}",
             ui.get_mode(),
             ui.get_buffer()),
             (0.0, state.window_size.1 - 64.0),
             fid,
             64.0);
+
+        verts.append(&mut
+            text.render_text(
+                format!("Exploded: {}, Chunk Size: {:?}"
+                        , state.exploded
+                        , state.chunk_size),
+                (0.0, -state.window_size.1 * 2.9),
+                fid,
+                64.0));
+                
 
         text_tess = TessBuilder::new(&mut glfw)
             .add_vertices(&verts[..])
@@ -360,17 +518,27 @@ fn main() {
                 state.visual_type.select_pixels(&mut set, a, b);
                 set
             } else if state.selection.is_empty() {
-                [ui.cursor()].iter().cloned().collect()
+                let (x, y) = ui.cursor();
+                //let (w, h) = state.chunk_size;
+                //let (x, y) = (x + (x / w), y + (y / h));
+                [(x, y)].iter().cloned().collect()
             } else {
                 state.selection.clone()
             };
 
         let select_tess = TessBuilder::new(&mut glfw)
-            .add_vertices(&sel::vertice_from_selection(&set, &state.canvas))
+            .add_vertices(&state.render_selection(&set))
             .set_mode(Mode::Triangle)
             .build()
             .unwrap();
 
+
+        let tri_vert = state.render_canvas();
+        let tess = TessBuilder::new(&mut glfw)
+                .add_vertices(tri_vert)
+                .set_mode(Mode::Triangle)
+                .build()
+                .unwrap();
         // draw
         glfw.pipeline_builder().pipeline(&framebuffer, &pipestate,
             |pipeline, mut shd_gate| {
