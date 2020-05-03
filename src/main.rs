@@ -22,7 +22,7 @@ use std::{fs, collections::{HashSet, HashMap}};
 
 use selection as sel;
 use ui::*;
-use canvas::Canvas;
+use canvas::{Canvas, ShaderInterface, Semantics};
 use maths::*;
 use keyboard::CharKeyMod;
 use bitmap2d::*;
@@ -212,8 +212,17 @@ fn create_ui() -> Ui<UiState> {
     ui
 }
 
-fn main() {
+/// Retrieve the code from the vertex and fragment shader files and compile the corresponding
+/// shader program.
+fn compile_shader_program(vert: &str, frag: &str) -> Program<Semantics, (), ShaderInterface> {
+    let vert_shader = fs::read_to_string(vert).unwrap();
+    let frag_shader = fs::read_to_string(frag).unwrap();
+    Program::from_strings(None, &vert_shader, None, &frag_shader)
+        .expect("Couldn't compile OpenGL program")
+        .ignore_warnings()
+}
 
+fn main() {
     const WIDTH : f32 = 800.0;
     const HEIGHT : f32 = 600.0;
 
@@ -245,27 +254,9 @@ fn main() {
         .set_clear_color([0.3, 0.3, 0.3, 1.0])
         .enable_clear_color(true);
 
-    let VS = fs::read_to_string("src/canvas/normal.vert").unwrap();
-    let FS = fs::read_to_string("src/canvas/normal.frag").unwrap();
-    let program : Program<canvas::Semantics, (), canvas::ShaderInterface> =
-        Program::from_strings(None, &VS, None, &FS)
-        .expect("Couldn't compile OpenGL program")
-        .ignore_warnings();
-
-    let TVS = fs::read_to_string("src/text/text.vert").unwrap();
-    let TFS = fs::read_to_string("src/text/text.frag").unwrap();
-    let text_program : Program<text::Semantics, (), text::ShaderInterface> =
-        Program::from_strings(None, &TVS, None, &TFS)
-        .expect("Couldn't compile Text shader program")
-        .ignore_warnings();
-
-    let SVS = fs::read_to_string("src/selection.vert").unwrap();
-    let SFS = fs::read_to_string("src/selection.frag").unwrap();
-    let select_program : Program<sel::Semantics, (), sel::ShaderInterface> =
-        Program::from_strings(None, &SVS, None, &SFS)
-        .expect("Couldn't compile Selection shader program")
-        .ignore_warnings();
-
+    let program = compile_shader_program("src/canvas/normal.vert", "src/canvas/normal.frag");
+    let text_program = compile_shader_program("src/text/text.vert", "src/text/text.frag");
+    let select_program = compile_shader_program("src/selection.vert", "src/selection.frag");
 
     let mut framebuffer = glfw.back_buffer().unwrap();
 
