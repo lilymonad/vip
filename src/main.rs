@@ -344,8 +344,9 @@ fn main() {
             format!("{:?}:{}",
             ui.get_mode(),
             ui.get_buffer()),
-            (0.0, state.window_size.1 - 10.0),
-            fid);
+            (0.0, state.window_size.1 - 64.0),
+            fid,
+            64.0);
 
         text_tess = TessBuilder::new(&mut glfw)
             .add_vertices(&verts[..])
@@ -380,9 +381,9 @@ fn main() {
 
                 let text_view =
                     to_raw(
-                        scale(state.scale.0, -state.scale.1)
+                        scale(state.scale.0 * 0.5, -state.scale.1 * 0.5)
                         *
-                        translate(-(state.window_size.0) / 2.0, -(state.window_size.1) / 2.0)
+                        translate(-state.window_size.0 * 2.0, state.window_size.1)
                     );
 
 

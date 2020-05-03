@@ -9,10 +9,10 @@ out vec2 texcoord;
 
 void main()
 {
-    vec3 fpos = view * vec3(pos, 1);
+    vec3 fpos = vec3(pos, 1) * view;
     gl_Position = vec4(fpos.x, fpos.y, 0, 1.0);
 
-    fcolor = vec4(1,1,1,1);
+    fcolor = vec4(0,1,1,1);
 
     texcoord = texPos;
 }

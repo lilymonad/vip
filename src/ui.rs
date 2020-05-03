@@ -95,9 +95,12 @@ impl<T> Ui<T> {
             match evt {
                 WindowEvent::Close => { self.running = false },
 
+                WindowEvent::Key(Key::Backspace, _, Action::Press, _)
+                    if self.mode == Mode::Command => {
+                        self.buffer.pop();
+                },
                 // every other key pressed will update the buffer and the state of the Ui
                 WindowEvent::Key(k, _, act, _) if act != Action::Release => {
-
                     match k {
                         Key::LeftShift | Key::RightShift => self.modset.set(Mod::Shift),
                         Key::LeftControl | Key::RightControl => self.modset.set(Mod::Control),

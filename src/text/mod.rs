@@ -32,7 +32,8 @@ pub struct TextRenderer {
 
 impl TextRenderer {
 
-    pub fn render_text<S:AsRef<str>>(&self, text:S, mut pos:(f32, f32), id:FontID) -> Vec<Vertex> {
+    pub fn render_text<S:AsRef<str>>(&self, text:S, mut pos:(f32, f32), id:FontID, size:f32) -> Vec<Vertex> {
+        let scale = size / 32.0;
         let [aw, ah] = self.atlas.size();
         text.as_ref()
             .chars()
@@ -40,14 +41,13 @@ impl TextRenderer {
                 let rect = self.glyphs.get(&(c, id));
 
                 rect.map(|rect| {
-                    let scale = 2.0;
 
                     let (x,y) = rect.topleft;
                     let (w,h) = rect.size;
                     let (sx,sy) = pos;
                     let (sw,sh) = (w * aw as f32 * scale, h * ah as f32 * scale);
                     pos = (sx + sw, sy);
-                    let sy = sy + rect.y_offset * 32.0 * scale;
+                    let sy = sy + rect.y_offset * 64.0 * scale;
                     vec![
                         Vertex {
                             pos: VP::new([sx, sy]),
@@ -77,7 +77,7 @@ impl TextRenderer {
                 })
                 .unwrap_or_else(|| {
                     if c == ' ' {
-                        pos.0 += 10.0;
+                        pos.0 += 10.0 * scale;
                     }
                     vec![]
                 })
@@ -90,7 +90,7 @@ impl TextRenderer {
         let map = unsafe { self.text_cache.as_ptr().as_mut().unwrap() };
         map.entry((text.as_ref().to_string(), id))
             .or_insert_with(|| {
-                self.render_text(text, pos, id)
+                self.render_text(text, pos, id, 64.0)
             })
     }
 }

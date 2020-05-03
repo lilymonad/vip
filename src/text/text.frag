@@ -10,5 +10,5 @@ void main()
 {
   float v = texture(tex, texcoord).r;
 
-  diffuseColor = vec4(v, v, v, v);
+  diffuseColor = v * fcolor;
 }
