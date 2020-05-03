@@ -6,7 +6,11 @@ mod selection;
 mod maths;
 mod bitmap2d;
 
+use std::collections::{HashSet, HashMap};
+use std::fs;
+
 use image::{open, DynamicImage};
+
 use luminance::{
     context::GraphicsContext,
     pipeline::PipelineState,
@@ -17,26 +21,26 @@ use luminance::{
     pixel::{NormRGB8UI, NormRGBA8UI},
     blending::{Factor, Equation},
 };
-use luminance_glfw::{Surface, GlfwSurface, WindowDim, WindowOpt, WindowEvent};
-use std::{fs, collections::{HashSet, HashMap}};
 
-use selection as sel;
-use ui::*;
-use canvas::{Canvas, ShaderInterface, Semantics};
-use maths::*;
-use keyboard::CharKeyMod;
-use bitmap2d::*;
+use luminance_glfw::{Surface, GlfwSurface, WindowDim, WindowOpt, WindowEvent};
+
+use crate::bitmap2d::*;
+use crate::canvas::{Canvas, ShaderInterface, Semantics, TexPosition, Vertex, VertexPosition};
+use crate::keyboard::CharKeyMod;
+use crate::maths::*;
+use crate::selection as sel;
+use crate::ui::*;
 
 struct UiState {
-    palette:HashMap<CharKeyMod, (u8, u8, u8)>,
-    must_resize:bool,
-    scale:(f32, f32),
-    zoom:f32,
-    center:(f32, f32),
-    canvas:Canvas,
-    visual_type:VisualType,
-    window_size:(f32, f32),
-    selection:HashSet<(usize, usize)>,
+    palette: HashMap<CharKeyMod, (u8, u8, u8)>,
+    must_resize: bool,
+    scale: (f32, f32),
+    zoom: f32,
+    center: (f32, f32),
+    canvas: Canvas,
+    visual_type: VisualType,
+    window_size: (f32, f32),
+    selection: HashSet<(usize, usize)>,
 }
 
 enum VisualType {
@@ -227,8 +231,6 @@ fn main() {
     const HEIGHT : f32 = 600.0;
 
     const TRI_VERT : [canvas::Vertex; 6] = {
-        use canvas::{Vertex, VertexPosition, TexPosition};
-
         [
             Vertex { pos:VertexPosition::new([ 0.0, 0.0]), texPos:TexPosition::new([0.0,0.0]) },
             Vertex { pos:VertexPosition::new([16.0, 0.0]), texPos:TexPosition::new([1.0,0.0]) },
@@ -264,12 +266,12 @@ fn main() {
     let fid = textb.add_font("/usr/share/fonts/TTF/Hack-Regular.ttf").unwrap();
 
     let text_sampler = Sampler {
-        wrap_r : Wrap::ClampToEdge,
-        wrap_s : Wrap::ClampToEdge,
-        wrap_t : Wrap::ClampToEdge,
-        min_filter : MinFilter::LinearMipmapLinear,
-        mag_filter : MagFilter::Linear,
-        depth_comparison : None,
+        wrap_r: Wrap::ClampToEdge,
+        wrap_s: Wrap::ClampToEdge,
+        wrap_t: Wrap::ClampToEdge,
+        min_filter: MinFilter::LinearMipmapLinear,
+        mag_filter: MagFilter::Linear,
+        depth_comparison: None,
     };
     let text = textb.build(&mut glfw, text_sampler)
         .expect("Cannot load fonts");
@@ -307,16 +309,17 @@ fn main() {
     palette.insert(CharKeyMod::from("a"), (255, 0, 0));
     palette.insert(CharKeyMod::from("z"), (0, 255, 0));
     palette.insert(CharKeyMod::from("e"), (0, 0, 255));
+
     let mut state = UiState {
-        must_resize:false,
-        scale:(1.0/WIDTH, 1.0/HEIGHT),
-        zoom:1.0,
-        canvas:pattern,
-        center:(-8.0, -8.0),
-        visual_type:VisualType::Square,
+        must_resize: false,
+        scale: (1.0 / WIDTH, 1.0 / HEIGHT),
+        zoom: 1.0,
+        canvas: pattern,
+        center: (-8.0, -8.0),
+        visual_type: VisualType::Square,
         palette,
-        window_size:(WIDTH, HEIGHT),
-        selection:HashSet::new(),
+        window_size: (WIDTH, HEIGHT),
+        selection: HashSet::new(),
     };
 
     let img = open("selecteur.png").unwrap();
