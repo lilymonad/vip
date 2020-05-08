@@ -58,8 +58,8 @@ fn main() {
         .expect("Couldn't compile Text shader program")
         .ignore_warnings();
 
-    let SVS = fs::read_to_string("src/selection.vert").unwrap();
-    let SFS = fs::read_to_string("src/selection.frag").unwrap();
+    let SVS = fs::read_to_string("src/ui/selection/selection.vert").unwrap();
+    let SFS = fs::read_to_string("src/ui/selection/selection.frag").unwrap();
     let select_program : Program<sel::Semantics, (), sel::ShaderInterface> =
         Program::from_strings(None, &SVS, None, &SFS)
         .expect("Couldn't compile Selection shader program")
