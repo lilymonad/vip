@@ -42,11 +42,16 @@ impl From<&str> for KeySequence {
     }
 }
 
+pub type UiCommand<T> = dyn Fn(&mut Ui<T>, &mut T, &Vec<&str>);
+pub type UiVerb<T> = dyn Fn(&mut Ui<T>, &mut T, Option<&HashSet<(usize, usize)>>);
+pub type UiObject<T> = dyn Fn(&mut Ui<T>, &T, &mut HashSet<(usize, usize)>);
+pub type UiCharProcessor<T> = dyn Fn(&mut Ui<T>, &mut T, CharKeyMod);
+
 pub struct Ui<T> {
-    commands: HashMap<String, Rc<dyn Fn(&mut Ui<T>, &mut T, &Vec<&str>)>>,
-    verbs: HashMap<CharKeyMod, (bool, Rc<dyn Fn(&mut Ui<T>, &mut T, Option<&HashSet<(usize, usize)>>)>)>,
-    objects: HashMap<CharKeyMod, Rc<dyn Fn(&mut Ui<T>, &T, &mut HashSet<(usize, usize)>)>>,
-    char_processor: Rc<dyn Fn(&mut Ui<T>, &mut T, CharKeyMod)>,
+    commands: HashMap<String, Rc<UiCommand<T>>>,
+    verbs: HashMap<CharKeyMod, (bool, Rc<UiVerb<T>>)>,
+    objects: HashMap<CharKeyMod, Rc<UiObject<T>>>,
+    char_processor: Rc<UiCharProcessor<T>>,
 
     bindings: HashMap<(CharKeyMod, Mode), KeySequence>,
     modset:ModSet,
@@ -56,7 +61,7 @@ pub struct Ui<T> {
     buffer: String,
 
     // typed verb waiting for an object to come (if transitive)
-    verb: Option<(usize, Rc<dyn Fn(&mut Ui<T>, &mut T, Option<&HashSet<(usize, usize)>>)>)>,
+    verb: Option<(usize, Rc<UiVerb<T>>)>,
 
     mode: Mode,
     running: bool,
@@ -90,16 +95,17 @@ impl<T> Ui<T> {
         }
     }
 
-    pub fn input(&mut self, glfw:&mut GlfwSurface, env:&mut T) -> bool {
+    pub fn input(&mut self, glfw: &mut GlfwSurface, env: &mut T) -> bool {
         for evt in glfw.poll_events() {
             match evt {
-                WindowEvent::Close => { self.running = false },
+                WindowEvent::Close => self.running = false,
 
                 WindowEvent::Key(Key::Backspace, _, Action::Press, _)
                     if self.mode == Mode::Command => {
                         self.buffer.pop();
                 },
-                // every other key pressed will update the buffer and the state of the Ui
+
+                // Every other key pressed will update the buffer and the state of the Ui.
                 WindowEvent::Key(k, _, act, _) if act != Action::Release => {
                     match k {
                         Key::LeftShift | Key::RightShift => self.modset.set(Mod::Shift),
@@ -110,7 +116,10 @@ impl<T> Ui<T> {
                     }
 
                     if let Some(code) = self.layout.translate(&(k, self.modset)).clone() {
-                        if let Some(KeySequence { seq }) = self.bindings.get(&(CharKeyMod{key:code,mods:self.modset}, self.mode)) {
+                        let key_mod = CharKeyMod { key: code, mods: self.modset };
+                        let pair = (key_mod, self.mode);
+
+                        if let Some(KeySequence { seq }) = self.bindings.get(&pair) {
                             for CharKeyMod { key, mods } in seq.clone() {
                                 self.perform_char_mod(env, key, mods);
                             }
@@ -119,6 +128,7 @@ impl<T> Ui<T> {
                         }
                     }
                 },
+
                 WindowEvent::Key(k, _, Action::Release, _) => {
                     match k {
                         Key::LeftShift | Key::RightShift => self.modset.clear(Mod::Shift),
@@ -128,8 +138,12 @@ impl<T> Ui<T> {
                         _ => {},
                     }
                 },
+
                 e => {
-                    let _ = self.window_event_listener.as_ref().map(|f| { let f = f.clone(); f(env, e) });
+                    let _ = self.window_event_listener.as_ref().map(|f| {
+                        let f = f.clone();
+                        f(env, e)
+                    });
                 },
             }
         }
@@ -221,7 +235,7 @@ impl<T> Ui<T> {
                             self.verb = Some((count, action.clone()));
                         } else {
                             let act = action.clone();
-                            for n in 0..count {
+                            for _ in 0..count {
                                 act(self, env, None);
                             }
                         }
