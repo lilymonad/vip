@@ -378,12 +378,12 @@ fn main() {
             let select_atlas = pipeline.bind_texture(&tex_sel);
 
             let text_view = {
-                let center_x = (state.window_size.0) / 2.0;
-                let center_y = (state.window_size.1) / 2.0;
+                let center_x = state.window_size.0 * 2.0;
+                let center_y = state.window_size.1;
                 let scale_x = state.scale.0 * 0.5;
                 let scale_y = -state.scale.1 * 0.5;
 
-                to_raw(scale(scale_x, scale_y) * translate(-center_x, -center_y))
+                to_raw(scale(scale_x, scale_y) * translate(-center_x, center_y))
             };
 
             let canvas_view = {
