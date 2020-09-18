@@ -7,14 +7,27 @@ edition = "2018"
 # See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
 
 [dependencies]
-glm = '*'
-image = '*'
-glfw = '*'
-#specs = '*'
+
+# OpenGL rendering crates
 luminance = '*'
 luminance-glfw = '*'
 luminance-derive = '*'
+glfw = '*'
+glm = '*'
+
+# image manipulation crate used to create and modify pixel buffers
+# and load/save image projects
+image = '*'
+
 rusttype = '*'
+
+# Used for font loading
+# We use msdfgen to create the ascii character atlas which will be used
+# in a luminance pass to display text
+msdfgen = { version = '*', features = ['png', 'ttf-parser'] }
+msdfgen-lib = '*'
+notosans = '*'
+ttf-parser = '0.4'
 
 serde = { version = '*', features = ['derive'] }
 serde_json = '*'

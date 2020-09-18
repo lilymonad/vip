@@ -1,14 +1,11 @@
 use luminance_derive::{Semantics, Vertex, UniformInterface};
 use luminance::{
-    texture::{Texture, GenMipmaps, Dim2, Sampler},
-    pixel::{NormUnsigned, NormRGBA8UI},
-    context::GraphicsContext,
+    texture::Dim2,
+    pixel::NormUnsigned,
     pipeline::BoundTexture,
     shader::program::Uniform,
     linear::M33,
 };
-use std::collections::HashSet;
-use crate::canvas::Canvas;
 
 #[derive(Clone, Copy, Debug, Eq, PartialEq, Semantics)]
 pub enum Semantics {

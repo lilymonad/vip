@@ -166,19 +166,25 @@ impl<T> Ui<T> {
     fn perform_char_mod(&mut self, env:&mut T, c:CharKey, mods:ModSet) {
         match c {
 
+            // Special(0) == escape. It always comes back to normal mode and clears any buffered
+            // input (command buffer, normal verb buffer ...)
             CharKey::Special(0) => {
                 self.cursor = self.saved_cursor;
                 self.set_mode(Mode::Normal);
                 self.buffer.clear();
                 self.verb = None;
+                // We added the possibility to bind Escape key to a verb
                 if let Some((_, action)) = self.verbs.get(&CharKeyMod { key:c, mods }) {
                     (action.clone())(self, env, None);
                 }
             },
 
+            // Return pressed while in Command mode triggers the command, and returns to normal
+            // mode
             CharKey::Special(24) if self.mode == Mode::Command => {
                 let s = std::mem::replace(&mut self.buffer, String::new());
                 self.launch_command(env, s);
+                self.set_mode(Mode::Normal);
             },
             // any character in insertion mode
             c if self.mode == Mode::Insertion => {
@@ -290,14 +296,17 @@ impl<T> Ui<T> {
         self.cursor
     }
 
-    pub fn displace(&mut self, dx:isize, dy:isize) {
-        self.cursor.0 = (self.cursor.0 as isize).wrapping_add(dx) as usize;
-        self.cursor.1 = (self.cursor.1 as isize).wrapping_add(dy) as usize;
-    }
-
     pub fn wrapping_displace(&mut self, dx:isize, dy:isize, w:usize, h:usize) {
         self.cursor.0 = ((self.cursor.0 as isize).wrapping_add(dx) as usize).min(w - 1);
         self.cursor.1 = ((self.cursor.1 as isize).wrapping_add(dy) as usize).min(h - 1);
+        if self.mode != Mode::Visual {
+            self.saved_cursor = self.cursor
+        }
+    }
+
+    pub fn displace(&mut self, dx:isize, dy:isize, w:usize, h:usize) {
+        self.cursor.0 = ((self.cursor.0 as isize).saturating_add(dx) as usize).min(w - 1);
+        self.cursor.1 = ((self.cursor.1 as isize).saturating_add(dy) as usize).min(h - 1);
         if self.mode != Mode::Visual {
             self.saved_cursor = self.cursor
         }

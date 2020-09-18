@@ -1,3 +1,4 @@
+use msdfgen_lib; // forces linking with msdfgen library
 mod bitmap2d;
 mod canvas;
 mod keyboard;
@@ -23,10 +24,21 @@ use luminance::{
 
 use luminance_glfw::{Surface, GlfwSurface, WindowDim, WindowOpt, WindowEvent};
 
-use crate::canvas::{Canvas, ShaderInterface, Semantics};
+use crate::canvas::{Canvas, ShaderInterface as CanvasUni, Semantics as CanvasSem};
 use crate::keyboard::CharKeyMod;
 use crate::maths::*;
-use crate::ui::{Ui, uistate::{UiState, VisualType}};
+use crate::ui::{
+    Ui,
+    uistate::{
+        UiState,
+        VisualType
+    },
+    selection::{
+        Semantics as SelSem,
+        ShaderInterface as SelUni
+    }
+};
+use crate::text::{HAlign, VAlign, Semantics as TextSem, ShaderInterface as TextUni};
 
 /// Create the main UI object.
 fn create_ui() -> Ui<UiState> {
@@ -72,7 +84,7 @@ fn create_ui() -> Ui<UiState> {
             });
         });
 
-    // TODO: What does it do?
+    // Set the selected pixel's color to white
     ui.add_verb("s", true, |_, UiState { canvas,.. }, positions| {
         let positions = positions.unwrap();
         for &(x, y) in positions {
@@ -141,7 +153,7 @@ fn create_ui() -> Ui<UiState> {
         *exploded = !(*exploded);
     });
     
-    // TODO: What does it do?
+    // <S-[movement]> moves the canvas on the screen
     ui.add_verb("H", false, |_, UiState { center,.. }:&mut UiState, _| {
         center.0 -= 1.0;
     });
@@ -202,7 +214,10 @@ fn create_ui() -> Ui<UiState> {
 
 /// Retrieve the code from the vertex and fragment shader files and compile the corresponding
 /// shader program.
-fn compile_shader_program(vert: &str, frag: &str) -> Program<Semantics, (), ShaderInterface> {
+fn compile_shader_program<S, I>(vert: &str, frag: &str) -> Program<S, (), I>
+    where S : luminance::vertex::Semantics,
+          I : luminance::shader::program::UniformInterface,
+{
     let vert_shader = fs::read_to_string(vert).unwrap();
     let frag_shader = fs::read_to_string(frag).unwrap();
     Program::from_strings(None, &vert_shader, None, &frag_shader)
@@ -223,13 +238,23 @@ fn main() {
         .set_clear_color([0.3, 0.3, 0.3, 1.0])
         .enable_clear_color(true);
 
-    let program = compile_shader_program("src/canvas/normal.vert", "src/canvas/normal.frag");
-    let text_program = compile_shader_program("src/text/text.vert", "src/text/text.frag");
-    let select_program = compile_shader_program("src/ui/selection/selection.vert", "src/ui/selection/selection.frag");
+    let program = compile_shader_program::<CanvasSem, CanvasUni>(
+        "src/canvas/normal.vert",
+        "src/canvas/normal.frag"
+    );
+    let text_program = compile_shader_program::<TextSem, TextUni>(
+        "src/text/text.vert",
+        "src/text/text.frag"
+    );
+    let select_program = compile_shader_program::<SelSem, SelUni>(
+        "src/ui/selection/selection.vert",
+        "src/ui/selection/selection.frag"
+    );
 
     let mut framebuffer = glfw.back_buffer().unwrap();
 
-    let mut textb = text::TextRendererBuilder::for_resolution(64);
+    let mut textb = text::TextRendererBuilder::for_resolution(32);
+    //let fid = textb.add_font("jackinput.ttf").unwrap();
     let fid = textb.add_font("/usr/share/fonts/TTF/Hack-Regular.ttf").unwrap();
 
     let text_sampler = Sampler {
@@ -327,14 +352,16 @@ fn main() {
 
         let mut verts = text.render_text(
             format!("{:?}:{}", ui.get_mode(), ui.get_buffer()),
-            (0.0, state.window_size.1 - 64.0),
+            (HAlign::Left(0), VAlign::Bottom(0)),
+            state.window_size,
             fid,
             64.0);
 
         verts.append(&mut
             text.render_text(
                 format!("Exploded: {}, Chunk Size: {:?}", state.exploded, state.chunk_size),
-                (0.0, -state.window_size.1 * 2.9),
+                (HAlign::Center, VAlign::Top(0)),
+                state.window_size,
                 fid,
                 64.0));
                 
@@ -378,12 +405,12 @@ fn main() {
             let select_atlas = pipeline.bind_texture(&tex_sel);
 
             let text_view = {
-                let center_x = state.window_size.0 * 2.0;
-                let center_y = state.window_size.1;
-                let scale_x = state.scale.0 * 0.5;
-                let scale_y = -state.scale.1 * 0.5;
+                let center_x = state.window_size.0 * 0.5;
+                let center_y = state.window_size.1 * 0.5;
+                let scale_x = state.scale.0 * 2.0;
+                let scale_y = -state.scale.1 * 2.0;
 
-                to_raw(scale(scale_x, scale_y) * translate(-center_x, center_y))
+                to_raw(scale(scale_x, scale_y) * translate(-center_x, -center_y - 10.0))
             };
 
             let canvas_view = {
