@@ -15,7 +15,7 @@ use luminance::{
 
 pub use shader::*;
 
-#[derive(Clone)]
+#[derive(Clone, Copy)]
 pub struct GlyphRect {
     pub atlas_coord: (f32, f32),
     pub atlas_size: (f32, f32),
@@ -30,9 +30,15 @@ impl Into<usize> for FontID {
     fn into(self) -> usize { self.0 }
 }
 
+pub struct FontInfo {
+    toppest: f32,
+    lowest: f32,
+    glyphs: [Option<GlyphRect>; 256],
+}
+
 pub struct TextRenderer {
     pub atlas: Texture<Dim2, NormRGB8UI>,
-    pub glyphs: BTreeMap<(char, FontID), GlyphRect>,
+    pub fonts: BTreeMap<FontID, FontInfo>,
     pub resolution: f32,
 
     text_cache: Cell<HashMap<(String, FontID), Vec<Vertex>>>,
@@ -58,34 +64,21 @@ impl TextRenderer {
         -> Vec<Vertex>
     {
         let scale = size / self.resolution;
-        let [aw, ah] = self.atlas.size();
-        let [wscale, hscale] = [aw as f32 * scale, ah as f32 * scale];
-        let text : Vec<Option<GlyphRect>> = text.as_ref().chars().map(|c| self.glyphs.get(&(c, id)).cloned()).collect();
+        let font = self.fonts.get(&id).unwrap();
+        let text : Vec<Option<GlyphRect>> = text.as_ref().chars().map(|c| font.glyphs[c as usize].clone()).collect();
 
-        let mut toppest = None;
-        let mut bottomest = None;
         let mut text_width = 0.0;
-
-
 
         for c in &text {
             if let Some(rect) = c {
-                text_width += rect.atlas_size.0 * wscale;
-
-                let top    = rect.offset.top    * rect.scale * size;
-                let bottom = rect.offset.bottom * rect.scale * size;
-
-                let toppest = toppest.get_or_insert(top);
-                *toppest = toppest.min(top);
-                let bottomest = bottomest.get_or_insert(bottom);
-                *bottomest = bottomest.max(bottom);
+                text_width += size * (rect.offset.right - rect.offset.left) * rect.scale;
             } else {
                 text_width += self.resolution * 0.5 * scale;
             }
         }
 
-        let toppest = toppest.unwrap_or(0.0);
-        let bottomest = bottomest.unwrap_or(0.0);
+        let toppest = font.toppest * size;
+        let bottomest = font.lowest * size;
 
         let mut sx = match ha {
             HAlign::Left(offset) => offset as f32,
@@ -94,9 +87,9 @@ impl TextRenderer {
         };
 
         let sy = match va {
-            VAlign::Top(offset) => offset as f32 + size - toppest,
+            VAlign::Top(offset) => offset as f32 + toppest - bottomest,
             VAlign::Center => (screenh - size) * 0.5,
-            VAlign::Bottom(offset) => screenh - offset as f32 - bottomest,
+            VAlign::Bottom(offset) => screenh - offset as f32 + bottomest,
         };
 
 
@@ -182,7 +175,7 @@ impl TextRendererBuilder {
     }
 
     pub fn build<C:GraphicsContext>(&self, ctx: &mut C, sampler: Sampler) -> Option<TextRenderer> {
-        let chars : Vec<(usize, char)> = (33..127u8).map(|n| n as char).enumerate().collect();
+        let chars : Vec<(usize, char)> = (33..255u8).map(|n| n as char).enumerate().collect();
 
         let res = self.resolution;
         let nb_chars = chars.len() as u32;
@@ -197,8 +190,7 @@ impl TextRendererBuilder {
         let atlas : Texture<Dim2, NormRGB8UI> = Texture::new(ctx
                                                              , [aw, ah]
                                                              , 0, sampler).ok()?;
-        println!("Atlas allocated");
-        let mut glyphs = BTreeMap::new();
+        let mut fonts = BTreeMap::new();
 
         let glyphs_per_row = min_s / res;
 
@@ -210,16 +202,23 @@ impl TextRendererBuilder {
             let fy = min_s * fi as u32;
 
             let f = TTFFont::from_data(&content, 0)?;//Font::from_bytes(&content).ok()?;
+            let toppest = f.ascender() as f32 / f.height() as f32;
+            let lowest  = f.descender() as f32 / f.height() as f32;
+            let mut glyphs = [None; 256];
 
             for (ci, c) in &chars {
                 let x = ci % glyphs_per_row as usize;
                 let y = ci / glyphs_per_row as usize;
 
-                println!("processing char {} with res {}", c, res);
-
                 let (w, h) = (res, res);
-                let glyph = f.glyph_index(*c).unwrap();
-                let mut shape = f.glyph_shape(glyph).unwrap();
+                let glyph = match f.glyph_index(*c) {
+                    Some(id) => id,
+                    None => continue,
+                };
+                let mut shape = match f.glyph_shape(glyph) {
+                    Some(shape) => shape,
+                    None => continue,
+                };
 
                 let mut bounds = shape.get_bounds();
                 let framing = bounds.autoframe(res, res, Range::Px(4.0), None).unwrap();
@@ -229,9 +228,6 @@ impl TextRendererBuilder {
                 shape.edge_coloring_simple(3.0, 0);
                 shape.generate_msdf(&mut map, &framing, EDGE_THRESHOLD, OVERLAP_SUPPORT);
 
-                println!("infos:");
-                println!("\tbounds: {:?}", bounds);
-                println!("\tframing: {:?}", framing);
                 std::mem::swap(&mut bounds.bottom, &mut bounds.top);
 
                 map.flip_y();
@@ -244,7 +240,6 @@ impl TextRendererBuilder {
                     (bounds.right + framing.translate.x) * framing.scale.x,
                 );
 
-                println!("Uploading glyph");
                 let (gx, gy) = (res * x as u32, fy + res * y as u32);
                 atlas.upload_part_raw(GenMipmaps::No
                    , [gx, gy]
@@ -257,13 +252,15 @@ impl TextRendererBuilder {
                     right: bounds.right as f32 / res as f32 * framing.scale.x as f32,
                 };
 
-                glyphs.insert((*c, FontID(fi)), GlyphRect {
+                glyphs[*c as usize] = Some(GlyphRect {
                     atlas_coord: ((gx as f32 + left as f32) / aw as f32, (gy as f32 + top as f32) / ah as f32),
                     atlas_size: ((right - left) as f32 / aw as f32, (bottom - top) as f32 / ah as f32),
                     offset: bounds,
                     scale: (framing.range / origin) as f32,
                 });
             }
+
+            fonts.insert(FontID(fi), FontInfo { toppest, lowest, glyphs });
         }
 
         let tex = atlas.get_raw_texels();
@@ -271,7 +268,7 @@ impl TextRendererBuilder {
 
         Some(TextRenderer {
             atlas,
-            glyphs,
+            fonts,
             resolution: res as f32,
             text_cache: Cell::new(HashMap::new()),
         })
