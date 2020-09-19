@@ -85,8 +85,9 @@ impl TextRenderer {
             HAlign::Right(offset) => screenw - offset as f32 - text_width,
         };
 
+        // TODO: correct the trick used to show accents which are outside font's bounds
         let sy = match va {
-            VAlign::Top(offset) => offset as f32 + toppest - bottomest,
+            VAlign::Top(offset) => offset as f32 + size - bottomest,//+ toppest - bottomest,
             VAlign::Center => (screenh - size) * 0.5,
             VAlign::Bottom(offset) => screenh - offset as f32 + bottomest,
         };
@@ -104,8 +105,7 @@ impl TextRenderer {
                         size * rect.bounds.bottom,
                         size * rect.bounds.right,
                     );
-                    sx += right - left;
-                    vec![
+                    let ret = vec![
                         Vertex {
                             pos: VP::new([sx + left, sy + top]),
                             texPos: TP::new([x, y]),
@@ -130,7 +130,9 @@ impl TextRenderer {
                             pos: VP::new([sx + left, sy + top]),
                             texPos: TP::new([x, y]),
                         }
-                    ]
+                    ];
+                    sx += right - left;
+                    ret
                 })
                 .unwrap_or_else(|| {
                     sx += self.resolution * 0.5 * scale;
