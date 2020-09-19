@@ -19,8 +19,7 @@ pub use shader::*;
 pub struct GlyphRect {
     pub atlas_coord: (f32, f32),
     pub atlas_size: (f32, f32),
-    pub offset: msdfgen::Bounds<f32>,
-    pub scale: f32,
+    pub bounds: msdfgen::Bounds<f32>,
 }
 
 #[derive(PartialEq, Eq, PartialOrd, Ord, Hash, Clone, Copy)]
@@ -71,7 +70,7 @@ impl TextRenderer {
 
         for c in &text {
             if let Some(rect) = c {
-                text_width += size * (rect.offset.right - rect.offset.left) * rect.scale;
+                text_width += size * (rect.bounds.right - rect.bounds.left);
             } else {
                 text_width += self.resolution * 0.5 * scale;
             }
@@ -100,10 +99,10 @@ impl TextRenderer {
                     let (x,y) = rect.atlas_coord; // topleft coords in atlas
                     let (w,h) = rect.atlas_size;  // rect size of glyph in atlas
                     let (top, left, bottom, right) = (
-                        size * rect.offset.top * rect.scale,
-                        size * rect.offset.left * rect.scale,
-                        size * rect.offset.bottom * rect.scale,
-                        size * rect.offset.right * rect.scale,
+                        size * rect.bounds.top,
+                        size * rect.bounds.left,
+                        size * rect.bounds.bottom,
+                        size * rect.bounds.right,
                     );
                     sx += right - left;
                     vec![
@@ -245,18 +244,18 @@ impl TextRendererBuilder {
                    , [gx, gy]
                    , [w, h], mapu8.raw_pixels()).ok().unwrap();
 
+                let scale = framing.range / origin;
                 let bounds = msdfgen::Bounds {
-                    bottom: -bounds.top as f32 / res as f32 * framing.scale.y as f32,
-                    top: -bounds.bottom as f32 / res as f32 * framing.scale.y as f32,
-                    left: bounds.left as f32 / res as f32 * framing.scale.x as f32,
-                    right: bounds.right as f32 / res as f32 * framing.scale.x as f32,
+                    bottom: (-bounds.top / res as f64 * framing.scale.y * scale) as f32,
+                    top: (-bounds.bottom / res as f64 * framing.scale.y * scale) as f32,
+                    left: (bounds.left / res as f64 * framing.scale.x * scale) as f32,
+                    right: (bounds.right / res as f64 * framing.scale.x * scale) as f32,
                 };
 
                 glyphs[*c as usize] = Some(GlyphRect {
                     atlas_coord: ((gx as f32 + left as f32) / aw as f32, (gy as f32 + top as f32) / ah as f32),
                     atlas_size: ((right - left) as f32 / aw as f32, (bottom - top) as f32 / ah as f32),
-                    offset: bounds,
-                    scale: (framing.range / origin) as f32,
+                    bounds,
                 });
             }
 
