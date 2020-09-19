@@ -25,8 +25,8 @@ pub struct GlyphRect {
 #[derive(PartialEq, Eq, PartialOrd, Ord, Hash, Clone, Copy)]
 pub struct FontID(usize);
 
-impl Into<usize> for FontID {
-    fn into(self) -> usize { self.0 }
+impl From<FontID> for usize {
+    fn from(fid:FontID) -> usize { fid.0 }
 }
 
 pub struct FontInfo {
