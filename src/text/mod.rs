@@ -19,7 +19,8 @@ pub use shader::*;
 pub struct GlyphRect {
     pub atlas_coord: (f32, f32),
     pub atlas_size: (f32, f32),
-    pub offset: (f32, f32),
+    pub offset: msdfgen::Bounds<f32>,
+    pub scale: f32,
 }
 
 #[derive(PartialEq, Eq, PartialOrd, Ord, Hash, Clone, Copy)]
@@ -61,15 +62,30 @@ impl TextRenderer {
         let [wscale, hscale] = [aw as f32 * scale, ah as f32 * scale];
         let text : Vec<Option<GlyphRect>> = text.as_ref().chars().map(|c| self.glyphs.get(&(c, id)).cloned()).collect();
 
+        let mut toppest = None;
+        let mut bottomest = None;
         let mut text_width = 0.0;
+
+
 
         for c in &text {
             if let Some(rect) = c {
                 text_width += rect.atlas_size.0 * wscale;
+
+                let top    = rect.offset.top    * rect.scale * size;
+                let bottom = rect.offset.bottom * rect.scale * size;
+
+                let toppest = toppest.get_or_insert(top);
+                *toppest = toppest.min(top);
+                let bottomest = bottomest.get_or_insert(bottom);
+                *bottomest = bottomest.max(bottom);
             } else {
                 text_width += self.resolution * 0.5 * scale;
             }
         }
+
+        let toppest = toppest.unwrap_or(0.0);
+        let bottomest = bottomest.unwrap_or(0.0);
 
         let mut sx = match ha {
             HAlign::Left(offset) => offset as f32,
@@ -78,9 +94,9 @@ impl TextRenderer {
         };
 
         let sy = match va {
-            VAlign::Top(offset) => offset as f32,
+            VAlign::Top(offset) => offset as f32 + size - toppest,
             VAlign::Center => (screenh - size) * 0.5,
-            VAlign::Bottom(offset) => screenh - offset as f32 - size,
+            VAlign::Bottom(offset) => screenh - offset as f32 - bottomest,
         };
 
 
@@ -88,36 +104,38 @@ impl TextRenderer {
             .into_iter()
             .map(|rect| {
                 rect.map(|rect| {
-                    let (x,y) = rect.atlas_coord;
-                    let (w,h) = rect.atlas_size;
-                    let (ox,oy) = rect.offset;
-                    let (sw,sh) = (w * wscale, h * hscale);
-                    let ssx = sx + ox * wscale;
-                    let ssy = sy + oy * hscale;
-                    sx = ssx + sw;
+                    let (x,y) = rect.atlas_coord; // topleft coords in atlas
+                    let (w,h) = rect.atlas_size;  // rect size of glyph in atlas
+                    let (top, left, bottom, right) = (
+                        size * rect.offset.top * rect.scale,
+                        size * rect.offset.left * rect.scale,
+                        size * rect.offset.bottom * rect.scale,
+                        size * rect.offset.right * rect.scale,
+                    );
+                    sx += right - left;
                     vec![
                         Vertex {
-                            pos: VP::new([ssx, ssy]),
+                            pos: VP::new([sx + left, sy + top]),
                             texPos: TP::new([x, y]),
                         },
                         Vertex {
-                            pos: VP::new([ssx, ssy + sh]),
+                            pos: VP::new([sx + left, sy + bottom]),
                             texPos: TP::new([x, y+h]),
                         },
                         Vertex {
-                            pos: VP::new([ssx + sw, ssy + sh]),
+                            pos: VP::new([sx + right, sy + bottom]),
                             texPos: TP::new([x+w, y+h]),
                         },
                         Vertex {
-                            pos: VP::new([ssx + sw, ssy + sh]),
+                            pos: VP::new([sx + right, sy + bottom]),
                             texPos: TP::new([x+w, y+h]),
                         },
                         Vertex {
-                            pos: VP::new([ssx + sw, ssy]),
+                            pos: VP::new([sx + right, sy + top]),
                             texPos: TP::new([x+w, y]),
                         },
                         Vertex {
-                            pos: VP::new([ssx, ssy]),
+                            pos: VP::new([sx + left, sy + top]),
                             texPos: TP::new([x, y]),
                         }
                     ]
@@ -188,6 +206,7 @@ impl TextRendererBuilder {
         let mut map = Bitmap::new(res, res);
 
         for (fi, content) in self.fonts.iter().enumerate() {
+            let mut original_size = None;
             let fy = min_s * fi as u32;
 
             let f = TTFFont::from_data(&content, 0)?;//Font::from_bytes(&content).ok()?;
@@ -197,21 +216,6 @@ impl TextRendererBuilder {
                 let y = ci / glyphs_per_row as usize;
 
                 println!("processing char {} with res {}", c, res);
-                //let glyph = f
-                //    .glyph(*c)
-                //    .scaled(Scale::uniform(res as f32))
-                //    .positioned(Point { x:x as f32, y:y as f32 });
-                //glyph.unpositioned().exact_bounding_box().map(|ebb| {
-                //    let bb = glyph.pixel_bounding_box().unwrap();
-                //    println!("bb = {:?}", bb);
-                //    let (w, h) = (bb.width() as u32, bb.height() as u32);
-                //    let num_pixels = (w * h) as usize;
-                //    map.resize(num_pixels, 0);
-
-                //    glyph.draw(|x, y, v| {
-                //        let v = (v * 255f32) as u8;
-                //        map[(y*w + x) as usize] = v;
-                //    });
 
                 let (w, h) = (res, res);
                 let glyph = f.glyph_index(*c).unwrap();
@@ -220,37 +224,45 @@ impl TextRendererBuilder {
                 let mut bounds = shape.get_bounds();
                 let framing = bounds.autoframe(res, res, Range::Px(4.0), None).unwrap();
 
+                let origin = *original_size.get_or_insert(framing.range);
+
                 shape.edge_coloring_simple(3.0, 0);
                 shape.generate_msdf(&mut map, &framing, EDGE_THRESHOLD, OVERLAP_SUPPORT);
-
-                let height = bounds.height();
-                std::mem::swap(&mut bounds.bottom, &mut bounds.top);
-                bounds.bottom = (bounds.bottom * res as f64) / height;
-                bounds.top = (bounds.top * res as f64) / height;
-
-                bounds.left = (bounds.left * res as f64) / bounds.width();
-                bounds.right = (bounds.right * res as f64) / bounds.width();
 
                 println!("infos:");
                 println!("\tbounds: {:?}", bounds);
                 println!("\tframing: {:?}", framing);
+                std::mem::swap(&mut bounds.bottom, &mut bounds.top);
 
                 map.flip_y();
                 let mapu8 : Bitmap<RGB<u8>> = map.convert();
 
-                    println!("Uploading glyph");
-                    let (gx, gy) = (res * x as u32, fy + res * y as u32);
-                    atlas.upload_part_raw(GenMipmaps::No
-                       , [gx, gy]
-                       , [w, h], mapu8.raw_pixels()).ok().unwrap();
+                let (top, left, bottom, right) = (
+                    (bounds.top + framing.translate.y) * framing.scale.y,
+                    (bounds.left + framing.translate.x) * framing.scale.x,
+                    (bounds.bottom + framing.translate.y) * framing.scale.y,
+                    (bounds.right + framing.translate.x) * framing.scale.x,
+                );
 
-                    //println!("glyph '{}' min: {:?} max: {:?}, (w, h): {:?}", c, bb.min, bb.max, (bb.width(), bb.height()));
-                    glyphs.insert((*c, FontID(fi)), GlyphRect {
-                        atlas_coord: (gx as f32 / aw as f32, gy as f32 / ah as f32),
-                        atlas_size: (w as f32 / aw as f32, h as f32 / ah as f32),
-                        offset: (0.0, 0.0), //(ebb.min.x / aw as f32, (ebb.min.y + res as f32) / ah as f32),
-                    });
-                //});
+                println!("Uploading glyph");
+                let (gx, gy) = (res * x as u32, fy + res * y as u32);
+                atlas.upload_part_raw(GenMipmaps::No
+                   , [gx, gy]
+                   , [w, h], mapu8.raw_pixels()).ok().unwrap();
+
+                let bounds = msdfgen::Bounds {
+                    bottom: -bounds.top as f32 / res as f32 * framing.scale.y as f32,
+                    top: -bounds.bottom as f32 / res as f32 * framing.scale.y as f32,
+                    left: bounds.left as f32 / res as f32 * framing.scale.x as f32,
+                    right: bounds.right as f32 / res as f32 * framing.scale.x as f32,
+                };
+
+                glyphs.insert((*c, FontID(fi)), GlyphRect {
+                    atlas_coord: ((gx as f32 + left as f32) / aw as f32, (gy as f32 + top as f32) / ah as f32),
+                    atlas_size: ((right - left) as f32 / aw as f32, (bottom - top) as f32 / ah as f32),
+                    offset: bounds,
+                    scale: (framing.range / origin) as f32,
+                });
             }
         }
 
