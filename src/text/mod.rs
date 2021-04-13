@@ -1,5 +1,8 @@
 mod shader;
 
+use serde::*;
+use serde_json;
+
 use std::fs::File;
 use std::{cell::Cell, path::Path, fs, collections::{HashMap, BTreeMap}};
 use rusttype::{Font, Point, Scale};
@@ -15,11 +18,19 @@ use luminance::{
 
 pub use shader::*;
 
-#[derive(Clone, Copy)]
+#[derive(Clone, Copy, Serialize, Deserialize)]
+struct GlyphBounds {
+    top:f32,
+    left:f32,
+    bottom:f32,
+    right:f32,
+}
+
+#[derive(Clone, Copy, Serialize, Deserialize)]
 pub struct GlyphRect {
     pub atlas_coord: (f32, f32),
     pub atlas_size: (f32, f32),
-    pub bounds: msdfgen::Bounds<f32>,
+    bounds: GlyphBounds,
 }
 
 #[derive(PartialEq, Eq, PartialOrd, Ord, Hash, Clone, Copy)]
@@ -29,10 +40,11 @@ impl From<FontID> for usize {
     fn from(fid:FontID) -> usize { fid.0 }
 }
 
+#[derive(Serialize, Deserialize)]
 pub struct FontInfo {
     toppest: f32,
     lowest: f32,
-    glyphs: [Option<GlyphRect>; 256],
+    glyphs: BTreeMap<u8, GlyphRect>,
 }
 
 pub struct TextRenderer {
@@ -58,13 +70,12 @@ pub enum VAlign {
 type Alignment = (HAlign, VAlign);
 
 impl TextRenderer {
-
     pub fn render_text<S:AsRef<str>>(&self, text:S, (ha, va):Alignment, (screenw, screenh):(f32, f32), id:FontID, size:f32)
         -> Vec<Vertex>
     {
         let scale = size / self.resolution;
         let font = self.fonts.get(&id).unwrap();
-        let text : Vec<Option<GlyphRect>> = text.as_ref().chars().map(|c| font.glyphs[c as usize].clone()).collect();
+        let text : Vec<Option<GlyphRect>> = text.as_ref().chars().map(|c| font.glyphs.get(&(c as u8)).cloned()).collect();
 
         let mut text_width = 0.0;
 
@@ -152,9 +163,19 @@ impl TextRenderer {
     }
 }
 
+enum FontObject {
+    TTF(Vec<u8>),
+    MSDF(Vec<u8>, HashMap<u8, GlyphRect>),
+}
+
+#[derive(Serialize, Deserialize)]
+struct MSDFObjectInfo {
+    image_file:String,
+    glyphs:HashMap<u8, GlyphRect>,
+}
 
 pub struct TextRendererBuilder {
-    fonts: Vec<Vec<u8>>,
+    fonts: Vec<FontObject>,
     resolution: u32,
 }
 
@@ -166,12 +187,23 @@ impl TextRendererBuilder {
         }
     }
 
-    pub fn add_font<P:AsRef<Path>>(&mut self, file:P) -> Option<FontID> {
+    pub fn add_font_from_ttf<P:AsRef<Path>>(&mut self, file:P) -> Option<FontID> {
         let ret = FontID(self.fonts.len());
         let content : Vec<u8> = fs::read(file).ok()?;
 
-        self.fonts.push(content);
+        self.fonts.push(FontObject::TTF(content));
 
+        Some(ret)
+    }
+
+    pub fn add_font_from_json<P:AsRef<Path>>(&mut self, file:P) -> Option<FontID> {
+        let ret = FontID(self.fonts.len());
+        let file = fs::File::open(file).ok()?;
+        let msdf_info : MSDFObjectInfo = serde_json::from_reader(file).ok()?;
+
+        let img = image::load_from_memory(&fs::read(msdf_info.image_file).ok()?).ok()?.to_rgb().into_raw();
+        
+        self.fonts.push(FontObject::MSDF(img, msdf_info.glyphs));
         Some(ret)
     }
 
@@ -199,69 +231,79 @@ impl TextRendererBuilder {
         let mut map = Bitmap::new(res, res);
 
         for (fi, content) in self.fonts.iter().enumerate() {
-            let mut original_size = None;
             let fy = min_s * fi as u32;
+            match content {
+            FontObject::TTF(content) => {
+                let mut original_size = None;
 
-            let f = TTFFont::from_data(&content, 0)?;//Font::from_bytes(&content).ok()?;
-            let toppest = f.ascender() as f32 / f.height() as f32;
-            let lowest  = f.descender() as f32 / f.height() as f32;
-            let mut glyphs = [None; 256];
+                let f = TTFFont::from_data(&content, 0)?;
+                let toppest = f.ascender() as f32 / f.height() as f32;
+                let lowest  = f.descender() as f32 / f.height() as f32;
+                let mut glyphs = BTreeMap::new();
 
-            for (ci, c) in &chars {
-                let x = ci % glyphs_per_row as usize;
-                let y = ci / glyphs_per_row as usize;
+                for (ci, c) in &chars {
+                    let x = ci % glyphs_per_row as usize;
+                    let y = ci / glyphs_per_row as usize;
 
-                let (w, h) = (res, res);
-                let glyph = match f.glyph_index(*c) {
-                    Some(id) => id,
-                    None => continue,
-                };
-                let mut shape = match f.glyph_shape(glyph) {
-                    Some(shape) => shape,
-                    None => continue,
-                };
+                    let (w, h) = (res, res);
+                    let glyph = match f.glyph_index(*c) {
+                        Some(id) => id,
+                        None => continue,
+                    };
+                    let mut shape = match f.glyph_shape(glyph) {
+                        Some(shape) => shape,
+                        None => continue,
+                    };
 
-                let mut bounds = shape.get_bounds();
-                let framing = bounds.autoframe(res, res, Range::Px(4.0), None).unwrap();
+                    let mut bounds = shape.get_bounds();
+                    let framing = bounds.autoframe(res, res, Range::Px(2.0 * (res / 16) as f64), None).unwrap();
 
-                let origin = *original_size.get_or_insert(framing.range);
+                    let origin = *original_size.get_or_insert(framing.range);
 
-                shape.edge_coloring_simple(3.0, 0);
-                shape.generate_msdf(&mut map, &framing, EDGE_THRESHOLD, OVERLAP_SUPPORT);
+                    shape.edge_coloring_simple(3.0, 0);
+                    shape.generate_msdf(&mut map, &framing, EDGE_THRESHOLD, OVERLAP_SUPPORT);
 
-                std::mem::swap(&mut bounds.bottom, &mut bounds.top);
+                    std::mem::swap(&mut bounds.bottom, &mut bounds.top);
 
-                map.flip_y();
-                let mapu8 : Bitmap<RGB<u8>> = map.convert();
+                    map.flip_y();
+                    let mapu8 : Bitmap<RGB<u8>> = map.convert();
 
-                let (top, left, bottom, right) = (
-                    (bounds.top + framing.translate.y) * framing.scale.y,
-                    (bounds.left + framing.translate.x) * framing.scale.x,
-                    (bounds.bottom + framing.translate.y) * framing.scale.y,
-                    (bounds.right + framing.translate.x) * framing.scale.x,
-                );
+                    let (top, left, bottom, right) = (
+                        (bounds.top + framing.translate.y) * framing.scale.y,
+                        (bounds.left + framing.translate.x) * framing.scale.x,
+                        (bounds.bottom + framing.translate.y) * framing.scale.y,
+                        (bounds.right + framing.translate.x) * framing.scale.x,
+                    );
 
-                let (gx, gy) = (res * x as u32, fy + res * y as u32);
+                    let (gx, gy) = (res * x as u32, fy + res * y as u32);
+                    atlas.upload_part_raw(GenMipmaps::No
+                       , [gx, gy]
+                       , [w, h], mapu8.raw_pixels()).ok().unwrap();
+
+                    let scale = framing.range / origin;
+                    let bounds = GlyphBounds {
+                        bottom: (-bounds.top / res as f64 * framing.scale.y * scale) as f32,
+                        top: (-bounds.bottom / res as f64 * framing.scale.y * scale) as f32,
+                        left: (bounds.left / res as f64 * framing.scale.x * scale) as f32,
+                        right: (bounds.right / res as f64 * framing.scale.x * scale) as f32,
+                    };
+
+                    glyphs.insert(*c as u8, GlyphRect {
+                        atlas_coord: ((gx as f32 + left as f32) / aw as f32, (gy as f32 + top as f32) / ah as f32),
+                        atlas_size: ((right - left) as f32 / aw as f32, (bottom - top) as f32 / ah as f32),
+                        bounds,
+                    });
+                }
+
+                fonts.insert(FontID(fi), FontInfo { toppest, lowest, glyphs });
+            },
+            FontObject::MSDF(data, glyphs) => {
                 atlas.upload_part_raw(GenMipmaps::No
-                   , [gx, gy]
-                   , [w, h], mapu8.raw_pixels()).ok().unwrap();
-
-                let scale = framing.range / origin;
-                let bounds = msdfgen::Bounds {
-                    bottom: (-bounds.top / res as f64 * framing.scale.y * scale) as f32,
-                    top: (-bounds.bottom / res as f64 * framing.scale.y * scale) as f32,
-                    left: (bounds.left / res as f64 * framing.scale.x * scale) as f32,
-                    right: (bounds.right / res as f64 * framing.scale.x * scale) as f32,
-                };
-
-                glyphs[*c as usize] = Some(GlyphRect {
-                    atlas_coord: ((gx as f32 + left as f32) / aw as f32, (gy as f32 + top as f32) / ah as f32),
-                    atlas_size: ((right - left) as f32 / aw as f32, (bottom - top) as f32 / ah as f32),
-                    bounds,
-                });
+                                      , [0, fy]
+                                      , [aw, 255 / glyphs_per_row]
+                                      , &data);
+            },
             }
-
-            fonts.insert(FontID(fi), FontInfo { toppest, lowest, glyphs });
         }
 
         let tex = atlas.get_raw_texels();

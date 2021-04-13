@@ -36,7 +36,8 @@ use crate::ui::{
     selection::{
         Semantics as SelSem,
         ShaderInterface as SelUni
-    }
+    },
+    background::{Semantics as BgSem}
 };
 use crate::text::{HAlign, VAlign, Semantics as TextSem, ShaderInterface as TextUni};
 
@@ -79,7 +80,7 @@ fn create_ui() -> Ui<UiState> {
             ui.add_object(l.to_string().as_ref(), move |ui, UiState { canvas,.. }, positions| {
                 positions.insert(ui.cursor());
                 let (w, h) = canvas.size();
-                ui.wrapping_displace(*x, *y, w, h);
+                ui.displace(*x, *y, w, h);
                 positions.insert(ui.cursor());
             });
         });
@@ -88,26 +89,18 @@ fn create_ui() -> Ui<UiState> {
     ui.add_verb("s", true, |_, UiState { canvas,.. }, positions| {
         let positions = positions.unwrap();
         for &(x, y) in positions {
-            canvas.set_pixel_color(x, y, (255, 255, 255));
+            canvas.set_pixel_color(x, y, (255, 255, 255, 255));
         }
     });
 
     // Zoom in the canvas.
     ui.add_verb("<S-+>", false, |_, UiState { zoom, .. }, _| {
-        if *zoom >= 0.1 {
-            *zoom += 0.1;
-        } else {
-            *zoom += 0.01;
-        }
+        *zoom += 0.01
     });
 
     // Zoom out the canvas
     ui.add_verb("-", false, |_, UiState { zoom, .. }, _| {
-        if *zoom <= 0.1 {
-            *zoom -= 0.01;
-        } else {
-            *zoom -= 0.1;
-        }
+        *zoom -= 0.01;
     });
 
     // Enter command mode.
@@ -182,7 +175,9 @@ fn create_ui() -> Ui<UiState> {
         let g = args[2].parse::<u8>().unwrap();
         let b = args[3].parse::<u8>().unwrap();
 
-        palette.insert(key, (r, g, b));
+        let a = args.get(4).and_then(|p4| p4.parse::<u8>().ok()).unwrap_or(255);
+
+        palette.insert(key, (r, g, b, a));
     });
 
     ui.add_command("zoom", |_, UiState { zoom, .. }, args| {
@@ -207,6 +202,31 @@ fn create_ui() -> Ui<UiState> {
 
     ui.add_verb("<Esc>", false, |_, UiState { selection, .. }, _| {
         selection.clear();
+    });
+
+    ui.add_command("e", |_, UiState { ref mut canvas, ref mut filename, .. }, args| {
+        if let Some(fname) = args.get(0) {
+            let image = image::open(fname).map(|img| img.into_rgba());
+
+            if let Ok(image) = image {
+                canvas.size = (image.width() as usize, image.height() as usize);
+                canvas.data = image.into_vec().chunks(4).map(|v| {
+                    if let [a,b,c,d] = v { (*a,*b,*c,*d) }
+                    else { unreachable!() }
+                }).collect();
+            }
+
+            *filename = Some(fname.to_string())
+        }
+    });
+
+    ui.add_command("w", |_, UiState { ref canvas, ref mut filename, .. }, args| {
+        let fname = args.get(0).cloned().map(Into::into).or(filename.as_ref().cloned());
+        if let Some(fname) = fname {
+            let res = image::save_buffer(&fname, canvas.data_raw(), canvas.width() as u32, canvas.height() as u32, image::ColorType::Rgba8);
+            *filename = Some(fname);
+            println!("saving image resulted in: {:?}", res);
+        }
     });
 
     ui
@@ -250,12 +270,18 @@ fn main() {
         "src/ui/selection/selection.vert",
         "src/ui/selection/selection.frag"
     );
+    let bg_program = compile_shader_program::<BgSem, ()>(
+        "src/ui/background/background.vert",
+        "src/ui/background/background.frag"
+    );
 
     let mut framebuffer = glfw.back_buffer().unwrap();
 
-    let mut textb = text::TextRendererBuilder::for_resolution(32);
-    //let fid = textb.add_font("jackinput.ttf").unwrap();
-    let fid = textb.add_font("/usr/share/fonts/TTF/Hack-Regular.ttf").unwrap();
+    let fontname = "jackinput.ttf";
+    println!("Loading font {}", fontname);
+
+    let mut textb = text::TextRendererBuilder::for_resolution(16);
+    let fid = textb.add_font_from_ttf(fontname).unwrap();
 
     let text_sampler = Sampler {
         wrap_r: Wrap::ClampToEdge,
@@ -269,13 +295,14 @@ fn main() {
         .expect("Cannot load fonts");
 
 
+    println!("Creating canvas");
     let render_state = RenderState::default()
         .set_blending(Some((Equation::Additive, Factor::SrcAlpha, Factor::SrcAlphaComplement)))
         .set_depth_test(None);
 
     let mut text_tess;
 
-    let sampler = Sampler {
+    let canvas_sampler = Sampler {
         wrap_r : Wrap::ClampToEdge,
         wrap_s : Wrap::ClampToEdge,
         wrap_t : Wrap::ClampToEdge,
@@ -286,7 +313,7 @@ fn main() {
 
     let (width, height) = (16, 16);
 
-    let tex : Texture<Dim2, NormRGB8UI> = Texture::new(&mut glfw, [width, height], 0, sampler)
+    let mut tex : Texture<Dim2, NormRGBA8UI> = Texture::new(&mut glfw, [width, height], 0, canvas_sampler)
         .expect("Cannot create texture");
 
     let pattern = Canvas::new(width as usize, height as usize);
@@ -295,14 +322,16 @@ fn main() {
         .expect("Cannot upload texture");
 
 
+    println!("Creating UI");
     let mut ui = create_ui();
 
     let mut palette = HashMap::new();
-    palette.insert(CharKeyMod::from("a"), (255, 0, 0));
-    palette.insert(CharKeyMod::from("z"), (0, 255, 0));
-    palette.insert(CharKeyMod::from("e"), (0, 0, 255));
+    palette.insert(CharKeyMod::from("a"), (255, 0, 0, 255));
+    palette.insert(CharKeyMod::from("z"), (0, 255, 0, 255));
+    palette.insert(CharKeyMod::from("e"), (0, 0, 255, 255));
 
     let mut state = UiState {
+        filename: None,
         must_resize: false,
         scale: (1.0 / WIDTH, 1.0 / HEIGHT),
         zoom: 1.0,
@@ -316,6 +345,7 @@ fn main() {
         exploded:false,
     };
 
+    println!("Loading UI assets");
     let img = open("selecteur.png").unwrap();
     let raw : Vec<(u8, u8, u8, u8)> =
         match img {
@@ -333,10 +363,12 @@ fn main() {
             },
             _ => { unimplemented!("Error while loading selection image") },
         };
-    let tex_sel : Texture<Dim2, NormRGBA8UI> = Texture::new(&mut glfw, [256, 256], 0, sampler)
+    let tex_sel : Texture<Dim2, NormRGBA8UI> = Texture::new(&mut glfw, [256, 256], 0, text_sampler)
         .expect("Cannot create selection texture");
     tex_sel.upload(GenMipmaps::No, raw.as_ref())
         .expect("Cannot upload selection texture");
+
+    println!("Done");
 
     'main_loop: loop {
         if !ui.input(&mut glfw, &mut state) { break 'main_loop }
@@ -347,7 +379,7 @@ fn main() {
             state.must_resize = false;
         }
 
-
+        tex = Texture::new(&mut glfw, [state.canvas.size.0 as u32, state.canvas.size.1 as u32], 0, canvas_sampler).unwrap();
         tex.upload(GenMipmaps::No, state.canvas.as_ref()).expect("Cannot upload texture");
 
         let mut verts = text.render_text(
@@ -355,16 +387,27 @@ fn main() {
             (HAlign::Left(0), VAlign::Bottom(0)),
             state.window_size,
             fid,
-            64.0);
+            24.0);
 
         verts.append(&mut
             text.render_text(
-                format!("Exploded: {}, Chunk Size: {:?}", state.exploded, state.chunk_size),
+                format!("Exploded: {}, Chunk Size: {:?}, zoom: {}%", state.exploded, state.chunk_size, (state.zoom * 100.0) as i32),
                 (HAlign::Center, VAlign::Top(0)),
                 state.window_size,
                 fid,
-                64.0));
+                24.0));
                 
+        verts.append(&mut
+            text.render_text(
+                match &state.filename {
+                    Some(filename) => format!("file: {}", filename),
+                    None => String::from("Unnamed Buffer"),
+                },
+                (HAlign::Right(0), VAlign::Bottom(0)),
+                state.window_size,
+                fid,
+                24.0));
+
         text_tess = TessBuilder::new(&mut glfw)
             .add_vertices(&verts[..])
             .set_mode(Mode::Triangle)
@@ -398,6 +441,13 @@ fn main() {
                 .set_mode(Mode::Triangle)
                 .build()
                 .unwrap();
+
+        let bg_tess = TessBuilder::new(&mut glfw)
+            .add_vertices(&ui::background::render_background(state.window_size))
+            .set_mode(Mode::Triangle)
+            .build()
+            .unwrap();
+
         // Draw
         glfw.pipeline_builder().pipeline(&framebuffer, &pipestate, |pipeline, mut shd_gate| {
             let drawing_buffer = pipeline.bind_texture(&tex);
@@ -419,6 +469,11 @@ fn main() {
 
                 to_raw(scale(scale_x, scale_y) * translate(state.center.0, state.center.1))
             };
+
+            // render background
+            shd_gate.shade(&bg_program, |_, mut rdr_gate| {
+                rdr_gate.render(&render_state, |mut tess_gate| tess_gate.render(&bg_tess));
+            });
 
             // render canvas
             shd_gate.shade(&program, |iface, mut rdr_gate| {

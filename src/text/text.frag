@@ -1,4 +1,5 @@
 in vec4 fcolor;
+in vec4 bcolor;
 in vec2 texcoord;
 
 uniform sampler2D tex;
@@ -14,9 +15,9 @@ void main()
 {
   vec3 msdf = texture(tex, texcoord).rgb;
   float sigDist = median(msdf.r, msdf.g, msdf.b);
-  float w = fwidth(sigDist);
-  float opacity = smoothstep(0.5 - w, 0.5 + w, sigDist);
 
+  float w = fwidth(sigDist) * 0.5;
+  float opacity = smoothstep(0.5 - w, 0.5 + w, sigDist);
   
   diffuseColor = vec4(fcolor.rgb, opacity);
 }

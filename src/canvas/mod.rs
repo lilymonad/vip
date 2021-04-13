@@ -6,49 +6,65 @@ pub use shader::*;
 /// - Its size in pixels (Width, Height).
 /// - Its data (a big array of Width x Height pixels).
 pub struct Canvas {
-    size : (usize, usize),
-    data : Vec<(u8, u8, u8)>,
+    pub size : (usize, usize),
+    pub data : Vec<(u8, u8, u8, u8)>,
 }
 
 impl Canvas {
     pub fn new(x:usize, y:usize) -> Self {
         Self {
             size: (x, y),
-            data: vec![(0, 0, 0); x * y],
+            data: vec![(0, 0, 0, 255); x * y],
         }
     }
 
-    pub fn set_pixel_color(&mut self, x:usize, y:usize, rgb:(u8, u8, u8)) {
+    pub fn set_pixel_color(&mut self, x:usize, y:usize, rgba:(u8, u8, u8, u8)) {
         let (w, h) = self.size;
         let id = y * w + x;
 
         assert!(id < w*h);
 
-        self.data[y * w + x] = rgb;
+        self.data[id] = rgba;
     }
 
-    pub fn get_pixel_color(&self, x:usize, y:usize) -> (u8, u8, u8) {
+    pub fn get_pixel_color(&self, x:usize, y:usize) -> (u8, u8, u8, u8) {
         let (w, h) = self.size;
         let id = y * w + x;
 
         assert!(id < w*h);
 
-        self.data[y * w + x]
+        self.data[id]
     }
 
     pub fn size(&self) -> (usize, usize) {
         self.size
     }
+
+    pub fn data_raw(&self) -> &[u8] {
+        unsafe {
+            let slice : &[(u8, u8, u8, u8)] = self.data.as_ref();
+            let ptr = slice.as_ptr() as *const u8;
+            core::slice::from_raw_parts(ptr, slice.len() * 4)
+        }
+    }
+
+    pub fn width(&self) -> usize {
+        self.size.0
+    }
+
+    pub fn height(&self) -> usize {
+        self.size.1
+    }
 }
 
-impl AsRef<[(u8, u8, u8)]> for Canvas {
-    fn as_ref(&self) -> &[(u8, u8, u8)] {
+impl AsRef<[(u8, u8, u8, u8)]> for Canvas {
+    fn as_ref(&self) -> &[(u8, u8, u8, u8)] {
         &self.data
     }
 }
 
 impl std::ops::Deref for Canvas {
-    type Target = [(u8, u8, u8)];
+    type Target = [(u8, u8, u8, u8)];
 
     fn deref(&self) -> &Self::Target {
         &self.data

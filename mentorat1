@@ -1,0 +1,48 @@
+strategies de publication
+
+stage de m2: reimplem suite de bench pour pthread
+
+labels reproductibilite pour les confs
+
+
+ne pas rester bloqué, demander aux encadrants
+questions precises
+
+
+conefrence = le plsu interessant c'est les discu hors presentation
+
+trouver un workshop pour publier et presenter
+
+
+autonomie propositions:
+- reflechir a un protocole
+- soumettre aux encadrants avant de me lancer
+
+
+demander un acces aux locaux
+
+
+
+indexer par le masque le predicteur
+indexer TAGE par tid
+prediction de masque ?
+
+
+pistes:
+- tester stencils de polybench
+- calcul longueur chemin
+- classification boucles
+
+se comparer a un GPU = meilleure approche
+potentiel qu'on a par rapport au GPU:
+- baseline = gpu a la volta
+- proposer mecanisme pour bouger les points de reconvergence pour reschedule les
+  threads pour optimiser les boucles avec divergence
+- prendre le meme simu mais changer le scheduler et explique ren quoi c
+  representatif
+
+
+
+ce qu'on a :
+données sur les patterns de divergence et la prediction
+données sur le scheduling

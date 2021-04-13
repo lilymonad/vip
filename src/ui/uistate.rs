@@ -9,7 +9,8 @@ use crate::{
 const GSIZE : f32 = 0.3;
 
 pub struct UiState {
-    pub palette:HashMap<CharKeyMod, (u8, u8, u8)>,
+    pub filename:Option<String>,
+    pub palette:HashMap<CharKeyMod, (u8, u8, u8, u8)>,
     pub must_resize:bool,
     pub scale:(f32, f32),
     pub zoom:f32,
@@ -46,7 +47,7 @@ impl UiState {
                     let (tbx, tby) = (bx / cw, by / ch);
                     let (tex, tey) = (ex / cw, ey / ch);
 
-                    ret.append(&mut vec![
+                    ret.extend_from_slice(&[
                         Vertex { pos:VertexPosition::new([bx + gx,by + gy]), texPos:TexPosition::new([tbx,tby]) },
                         Vertex { pos:VertexPosition::new([ex + gx,by + gy]), texPos:TexPosition::new([tex,tby]) },
                         Vertex { pos:VertexPosition::new([ex + gx,ey + gy]), texPos:TexPosition::new([tex,tey]) },
@@ -105,7 +106,7 @@ impl UiState {
             let (tx, ty) = (cs*(itx as f32 )/ ats, cs*(ity as f32) / ats);
 
             // compute the color we are on
-            let (r, g, b) = self.canvas.get_pixel_color(x, y);
+            let (r, g, b, _) = self.canvas.get_pixel_color(x, y);
             let scol = [r, g, b];
 
 
@@ -178,25 +179,79 @@ impl VisualType {
                     .for_each(|(x, y)| { set.set_bit(x, y); });
             },
             VisualType::Circle => {
-                let (mx, my) = ((x1+x2+1) as f32 / 2.0, (y1+y2+1) as f32 / 2.0);
-                let (dx, dy) = (x1 as f32 - x2 as f32, y1 as f32 - y2 as f32);
-                let d = (dx.abs()).min(dy.abs());
-                let r = d / 2.0;
-                
-                let step = f32::atan(1.0 / d);
-                let mut angle = step / 2.0;
+                let dx = x2 as isize - x1 as isize;
+                let dy = y2 as isize - y1 as isize;
+                let mx = x1 as isize + (dx / 2);
+                let my = y1 as isize + (dy / 2);
+                let d = dx.min(dy);
 
-                while angle <= 2.0 * std::f32::consts::PI {
-
-                    let x = mx + r * f32::cos(angle);
-                    let y = my + r * f32::sin(angle);
-
-                    let (ix, iy) = (x.floor() as usize, y.floor() as usize);
-                    set.set_bit(ix, iy);
-
-                    angle += step;
+                if d % 2 == 1 {
+                    even_radius_andres(set, (mx, my), (d as f32 + 1.0) / 2.0);
+                } else {
+                    odd_radius_andres(set, (mx, my), d / 2);
                 }
             },
+        }
+    }
+}
+
+fn odd_radius_andres<T:BitMap2D>(set:&mut T, (x0, y0):(isize, isize), r:isize) {
+    let mut x = 0;
+    let mut y = r;
+    let mut d = r - 1;
+
+    while x <= y {
+
+        set.set_bit((x0+x) as usize, (y0+y) as usize);
+        set.set_bit((x0+y) as usize, (y0+x) as usize);
+        set.set_bit((x0-x) as usize, (y0+y) as usize);
+        set.set_bit((x0-y) as usize, (y0+x) as usize);
+        set.set_bit((x0-x) as usize, (y0-y) as usize);
+        set.set_bit((x0-y) as usize, (y0-x) as usize);
+        set.set_bit((x0+x) as usize, (y0-y) as usize);
+        set.set_bit((x0+y) as usize, (y0-x) as usize);
+
+        if d >= 2 * x {
+            d = d - 2*x - 1;
+            x = x + 1;
+        } else if d <= 2 * (r - y) {
+            d = d + 2*y - 1;
+            y = y - 1;
+        } else {
+            d = d + 2 * (y-x-1);
+            y = y - 1;
+            x = x + 1;
+        }
+    }
+}
+
+fn even_radius_andres<T:BitMap2D>(set:&mut T, (x0, y0):(isize, isize), r:f32) {
+    let mut x = 1;
+    let mut y = r as isize;
+
+    let test = |x, y| {
+        let d = (x*x + y*y) as f32;
+        (r - 0.5).powi(2) < d && d < (r + 0.5).powi(2)
+    };
+
+    while x <= y {
+
+        set.set_bit((x0+x  ) as usize, (y0+y  ) as usize);
+        set.set_bit((x0+y  ) as usize, (y0+x  ) as usize);
+        set.set_bit((x0-x+1) as usize, (y0+y  ) as usize);
+        set.set_bit((x0-y+1) as usize, (y0+x  ) as usize);
+        set.set_bit((x0-x+1) as usize, (y0-y+1) as usize);
+        set.set_bit((x0-y+1) as usize, (y0-x+1) as usize);
+        set.set_bit((x0+x  ) as usize, (y0-y+1) as usize);
+        set.set_bit((x0+y  ) as usize, (y0-x+1) as usize);
+
+        if test(x + 1, y) {
+            x = x + 1;
+        } else if test(x, y - 1) {
+            y = y - 1;
+        } else {
+            y = y - 1;
+            x = x + 1;
         }
     }
 }

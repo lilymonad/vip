@@ -6,5 +6,5 @@ out vec4 diffuseColor;
 
 void main()
 {
-    diffuseColor = vec4(texture(tex, texcoord).rgb, 1.0);
+    diffuseColor = texture(tex, texcoord);
 }

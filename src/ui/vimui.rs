@@ -305,8 +305,8 @@ impl<T> Ui<T> {
     }
 
     pub fn displace(&mut self, dx:isize, dy:isize, w:usize, h:usize) {
-        self.cursor.0 = ((self.cursor.0 as isize).saturating_add(dx) as usize).min(w - 1);
-        self.cursor.1 = ((self.cursor.1 as isize).saturating_add(dy) as usize).min(h - 1);
+        self.cursor.0 = ((self.cursor.0 as isize).saturating_add(dx).max(0) as usize).min(w - 1);
+        self.cursor.1 = ((self.cursor.1 as isize).saturating_add(dy).max(0) as usize).min(h - 1);
         if self.mode != Mode::Visual {
             self.saved_cursor = self.cursor
         }
